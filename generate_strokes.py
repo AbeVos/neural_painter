@@ -102,9 +102,9 @@ def save_label(path, idx, start, control, end, color, sizes):
     start_size, mid_size, end_size = [float2uint8(value) for value in sizes]
 
     with open(path, 'a') as file:
-        file.write(f"{idx};{start_x};{start_y};{ctrl_x};{ctrl_y};{end_x};"
-                   f"{end_y};{red};{green};{blue};{start_size};{mid_size};"
-                   f"{end_size}\n")
+        file.write(f"{idx};image_{i:08d}.png;{start_x};{start_y};{ctrl_x};"
+                   f"{ctrl_y};{end_x};{end_y};{red};{green};{blue};"
+                   f"{start_size};{mid_size};{end_size}\n")
 
 
 if __name__ == "__main__":
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open("labels.csv", 'w') as file:
-        file.write("index;start_x;start_y;ctrl_x;ctrl_y;end_x;end_y;red;"
+        file.write("index;image;start_x;start_y;ctrl_x;ctrl_y;end_x;end_y;red;"
                    "green;blue;start_size;mid_size;end_size\n")
 
     for i in tqdm(range(args.n)):
@@ -130,5 +130,5 @@ if __name__ == "__main__":
 
         draw_curve(image, point1, control, point2, color, sizes)
 
-        save_image(image, args.path, f"image_{i:05d}.png")
+        save_image(image, args.path, f"image_{i:08d}.png")
         save_label("labels.csv", i, point1, control, point2, color, sizes)
