@@ -90,7 +90,7 @@ def save_image(image, path, filename):
 
 def float2uint8(value, maximum=1):
     value /= maximum
-    return int(255 * value)
+    return int(256 * value)
 
 
 def save_label(path, idx, start, control, end, color, sizes):
