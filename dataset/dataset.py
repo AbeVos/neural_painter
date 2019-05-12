@@ -88,3 +88,9 @@ if __name__ == "__main__":
         ]))
 
     show_data(25)
+
+    dataloader = DataLoader(dataset)
+
+    for batch in dataloader:
+        images, params = batch['image'], batch['parameters']
+        print(images.shape, params.shape)
