@@ -2,25 +2,54 @@ import torch
 import torch.nn as nn
 
 
+class Interpolate(nn.Module):
+    def __init__(self, scale_factor, mode='nearest', align_corners=None):
+        super(Interpolate, self).__init__()
+        self.interp = nn.functional.interpolate
+        self.scale_factor = scale_factor
+        self.mode = mode
+        self.align_corners = align_corners
+
+    def forward(self, x):
+        x = self.interp(x, scale_factor=self.scale_factor, mode=self.mode,
+                        align_corners=self.align_corners)
+
+        return x
+
+
+class Upsample(nn.Module):
+    def __init__(self, scale_factor, channels_in, channels_out, kernel_size):
+        super(Upsample, self).__init__()
+
+        self.layers = nn.Sequential(
+            Interpolate(scale_factor, mode='bilinear'),
+            nn.ReflectionPad2d(kernel_size // 2),
+            nn.Conv2d(channels_in, channels_out, kernel_size)
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+
 class Encoder(nn.Module):
     def __init__(self, latent_dim):
         super(Encoder, self).__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(3, 64, 7, stride=2, padding=3),
-            nn.LeakyReLU(),
-            nn.Conv2d(64, 128, 7, stride=2),
-            # nn.BatchNorm2d(128),
-            nn.LeakyReLU(),
-            nn.Conv2d(128, 256, 5),
-            # nn.BatchNorm2d(256),
-            nn.LeakyReLU(),
-            nn.Conv2d(256, 512, 5),
-            # nn.BatchNorm2d(512),
-            nn.LeakyReLU(),
-            nn.Conv2d(512, 512, 5),
-            # nn.BatchNorm2d(512),
-            nn.LeakyReLU(),
+            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(64, 128, 7, stride=2, bias=False),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(128, 256, 5, bias=False),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(256, 512, 5, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(512, 512, 5, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(inplace=True),
         )
 
         self.fc = nn.Sequential(
@@ -34,7 +63,7 @@ class Encoder(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         x = x.view(len(x), -1)
-        # x = self.fc(x)
+        x = self.fc(x)
 
         mean = self.mean(x)
         logvar = self.logvar(x)
@@ -46,32 +75,34 @@ class Decoder(nn.Module):
     def __init__(self, latent_dim):
         super(Decoder, self).__init__()
 
-        self.linear = nn.Linear(latent_dim, 512)
-
         self.fc = nn.Sequential(
             nn.Linear(latent_dim, 512),
+            nn.LeakyReLU(),
+            nn.Linear(512, 512),
             nn.LeakyReLU(),
         )
 
         self.conv = nn.Sequential(
-            nn.ConvTranspose2d(512, 512, 5),
+            nn.ConvTranspose2d(512, 512, 5, bias=False),
             # nn.BatchNorm2d(512),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(512, 256, 5),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(512, 256, 5, bias=False),
             # nn.BatchNorm2d(256),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(256, 128, 5),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(256, 128, 5, bias=False),
             # nn.BatchNorm2d(128),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(128, 64, 7, stride=2),
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(64, 3, 7, stride=2, padding=2, output_padding=1)
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(128, 64, 7, stride=2, bias=False),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(64, 3, 7, stride=2, padding=2, output_padding=1,
+                               bias=False)
         )
 
     def forward(self, z):
         z = self.fc(z)
         z = z.view(len(z), 512, 1, 1)
 
+        # return self.upsample(z)
         return self.conv(z)
 
 
@@ -100,7 +131,6 @@ class VAE(nn.Module):
 
         D_kl = kl_divergence(mean, logvar).mean()
         recon_loss = self.recon_loss(recon, image) / len(image)
-        # print(D_kl.item(), recon_loss.item())
         elbo = recon_loss + D_kl
 
         return elbo

@@ -1,3 +1,4 @@
+import os
 import argparse
 import matplotlib.pyplot as plt
 
@@ -67,11 +68,14 @@ def train(dataset, model, optimizer, device, num_epochs=100,
                 print(f"Epoch {epoch:03d}, batch {idx:05d} | "
                       f"ELBO: {mean_elbo}")
 
-        model.eval()
-        samples, z = model.sample(25, z)
-        os.makedirs("samples/", exist_ok=True)
-        save_sample_plot(
-            samples, f"samples/samples_{epoch+1:03d}.png")
+                model.eval()
+                samples, z = model.sample(25, z)
+                os.makedirs("samples/", exist_ok=True)
+                save_sample_plot(
+                    samples, f"samples/samples_{epoch+1:03d}.png")
+
+        os.makedirs("models/", exist_ok=True)
+        torch.save(model.state_dict(), "models/stroke_vae.pth")
 
 
 if __name__ == "__main__":
@@ -83,7 +87,7 @@ if __name__ == "__main__":
         '--batch_size', dest='batch_size', type=int, default=128,
         help="Batch size for training.")
     parser.add_argument(
-        '--latent_dim', dest='latent_dim', type=int, default=12,
+        '--latent_dim', dest='latent_dim', type=int, default=32,
         help="Size of the latent dimension.")
     parser.add_argument(
         '--device', dest='device', type=str, default='cuda:0',
@@ -103,6 +107,3 @@ if __name__ == "__main__":
 
     train(dataset, model, optimizer, device, args.epochs, args.batch_size,
           args.eval_interval)
-
-    os.makedirs("models/", exist_ok=True)
-    torch.save(model.state_dict(), "models/stroke_vae.pth")

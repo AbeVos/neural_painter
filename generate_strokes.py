@@ -1,6 +1,7 @@
 import os
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from scipy.stats import norm
@@ -76,7 +77,8 @@ def draw_curve(image, start, control, end, color, sizes=(0.4, 0.6, 0.4)):
 
     for t in np.linspace(0, 1, n):
         position = spline.evaluate(t) + np.random.randn(2)
-        size = evaluate_2spline(*sizes, t)
+        # size = evaluate_2spline(*sizes, t)
+        size = (1 - t) * sizes[0] + t * sizes[1]
 
         draw_point(image, position, color, size)
 
@@ -99,36 +101,53 @@ def save_label(path, idx, start, control, end, color, sizes):
     end_x, end_y = [float2uint8(value, 255) for value in end]
 
     red, green, blue = [float2uint8(value) for value in color]
-    start_size, mid_size, end_size = [float2uint8(value) for value in sizes]
+    start_size, end_size = [float2uint8(value) for value in sizes]
 
     with open(path, 'a') as file:
-        file.write(f"{idx};image_{i:08d}.png;{start_x};{start_y};{ctrl_x};"
+        file.write(f"{idx};image_{idx:08d}.png;{start_x};{start_y};{ctrl_x};"
                    f"{ctrl_y};{end_x};{end_y};{red};{green};{blue};"
-                   f"{start_size};{mid_size};{end_size}\n")
+                   f"{start_size};{end_size}\n")
+
+
+def stroke_generator(n, size):
+    for i in tqdm(range(n)):
+        image = Image.new('RGB', (size, size), (0, 0, 0))
+
+        color = np.random.random(3)
+        start, control, end = np.random.random((3, 2)) * size
+        sizes = np.random.random(2) * 0.5 + 0.2
+
+        draw_curve(image, start, control, end, color, sizes)
+
+        yield image, (start, control, end, color, sizes)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-n', type=int, required=True,
+    parser = argparse.ArgumentParser(
+        description="Generate a brush stroke dataset.")
+    parser.add_argument('-n', type=int,
                         help="Number of samples to generate.")
-    parser.add_argument('-o', dest='path', type=str, default='images/')
+    parser.add_argument('-o', dest='path', type=str, default='images/',
+                        help="Directory to save images to.")
     parser.add_argument('--size', dest='size', type=int, default=64,
                         help="Image size.")
+    parser.add_argument('-t', dest='test', action='store_true',
+                        help="Generate a number of test images without"
+                             "saving them.")
     args = parser.parse_args()
 
-    with open("labels.csv", 'w') as file:
-        file.write("index;image;start_x;start_y;ctrl_x;ctrl_y;end_x;end_y;red;"
-                   "green;blue;start_size;mid_size;end_size\n")
+    if not args.test:
+        with open("labels.csv", 'w') as file:
+            file.write("index;image;start_x;start_y;ctrl_x;ctrl_y;end_x;end_y;red;"
+                       "green;blue;start_size;end_size\n")
 
-    for i in tqdm(range(args.n)):
-        image = Image.new('RGB', (args.size, args.size), (0, 0, 0))
+        for idx, (image, params) in enumerate(stroke_generator(args.n, args.size)):
+            save_image(image, args.path, f"image_{idx:08d}.png")
+            save_label("labels.csv", idx, *params)
+    else:
+        for idx, (image, params) in enumerate(stroke_generator(25, args.size)):
+            plt.subplot(5, 5, idx+1)
+            plt.imshow(image)
+            plt.axis('off')
 
-        # Generate random parameters.
-        color = np.random.random(3)
-        point1, point2, control = np.random.random((3, 2)) * args.size
-        sizes = np.random.random(3) * 0.5 + 0.2
-
-        draw_curve(image, point1, control, point2, color, sizes)
-
-        save_image(image, args.path, f"image_{i:08d}.png")
-        save_label("labels.csv", i, point1, control, point2, color, sizes)
+        plt.show()

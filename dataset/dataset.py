@@ -71,7 +71,6 @@ def show_data(n_images, nrow=5):
 
     for idx, image in enumerate(images):
         image = image.permute(1, 2, 0)
-        print(image.max())
 
         plt.subplot(n_images // nrow, nrow, idx+1)
         plt.imshow(image)
@@ -88,9 +87,3 @@ if __name__ == "__main__":
         ]))
 
     show_data(25)
-
-    dataloader = DataLoader(dataset)
-
-    for batch in dataloader:
-        images, params = batch['image'], batch['parameters']
-        print(images.shape, params.shape)
