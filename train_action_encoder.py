@@ -6,27 +6,9 @@ import matplotlib.pyplot as plt
 
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
+from models import ActionEncoder, VAE
 from dataset.dataset import BrushStrokeDataset
 from dataset.transform import ToTensor
-from train_vae import VAE
-
-
-class ActionEncoder(nn.Module):
-    def __init__(self, action_dim, latent_dim, hidden_dim, hidden_layers):
-        super(ActionEncoder, self).__init__()
-
-        self.layers = nn.Sequential(
-            nn.Linear(action_dim, hidden_dim),
-            *[nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),
-                nn.LeakyReLU(0.2),
-            ) for _ in range(hidden_layers)],
-            nn.Linear(hidden_dim, latent_dim)
-        )
-
-    def forward(self, x):
-        return self.layers(x)
 
 
 def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
