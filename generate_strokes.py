@@ -19,11 +19,13 @@ def sample_brush(diameter, std=1, color=(1, 1, 1)):
     xv, yv = np.meshgrid(x, x)
 
     normal = norm.pdf(xv, 0, 1) * norm.pdf(yv, 0, 1)
+    normal /= normal.max()
+    normal = np.clip(normal * 2, 0, 1)
 
     mask = np.random.random((diameter, diameter))
     mask = ndimage.gaussian_filter(mask, sigma=0.5)
     mask = mask * normal
-    mask /= mask.max()
+    # mask /= mask.max()
 
     brush[..., -1] *= mask
     brush = 255 * np.max([np.zeros_like(brush), brush], 0)
@@ -33,12 +35,13 @@ def sample_brush(diameter, std=1, color=(1, 1, 1)):
 def draw_point(image, position, color, brush_size=1):
     size = int(48 * brush_size)
     brush = sample_brush(size, 0.3, color).astype(np.uint8)
-    brush = Image.fromarray(brush)
+    brush_color = Image.fromarray(brush[..., :-1])
+    mask = Image.fromarray(brush[..., -1])
 
     position = np.array(position) - size // 2
     position = position.astype(int)
 
-    image.paste(brush, tuple(position), brush)
+    image.paste(brush_color, tuple(position), mask)
 
     return image
 
@@ -73,7 +76,7 @@ def draw_curve(image, start, control, end, color, sizes=(0.4, 0.6, 0.4)):
         return np.sqrt(np.sum(np.square(q - p)))
 
     spline = Spline(start, control, end)
-    n = int(distance(start, control) + distance(control, end)) // 2
+    n = int(distance(start, control) + distance(control, end))
 
     for t in np.linspace(0, 1, n):
         position = spline.evaluate(t) + np.random.randn(2)
@@ -111,11 +114,11 @@ def save_label(path, idx, start, control, end, color, sizes):
 
 def stroke_generator(n, size):
     for i in tqdm(range(n)):
-        image = Image.new('RGB', (size, size), (0, 0, 0))
+        image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
 
         color = np.random.random(3)
         start, control, end = np.random.random((3, 2)) * size
-        sizes = np.random.random(2) * 0.5 + 0.2
+        sizes = np.random.random(2) * 0.6 + 0.1
 
         draw_curve(image, start, control, end, color, sizes)
 
@@ -145,8 +148,8 @@ if __name__ == "__main__":
             save_image(image, args.path, f"image_{idx:08d}.png")
             save_label("labels.csv", idx, *params)
     else:
-        for idx, (image, params) in enumerate(stroke_generator(25, args.size)):
-            plt.subplot(5, 5, idx+1)
+        for idx, (image, params) in enumerate(stroke_generator(9, args.size)):
+            plt.subplot(3, 3, idx+1)
             plt.imshow(image)
             plt.axis('off')
 

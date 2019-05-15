@@ -36,7 +36,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),
+            nn.Conv2d(4, 64, 7, stride=2, padding=3, bias=False),
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(64, 128, 7, stride=2, bias=False),
             nn.BatchNorm2d(128),
@@ -54,7 +54,7 @@ class Encoder(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(512, 512),
-            nn.LeakyReLU()
+            nn.LeakyReLU(),
         )
 
         self.mean = nn.Linear(512, latent_dim)
@@ -84,17 +84,17 @@ class Decoder(nn.Module):
 
         self.conv = nn.Sequential(
             nn.ConvTranspose2d(512, 512, 5, bias=False),
-            # nn.BatchNorm2d(512),
+            nn.BatchNorm2d(512),
             nn.LeakyReLU(inplace=True),
             nn.ConvTranspose2d(512, 256, 5, bias=False),
-            # nn.BatchNorm2d(256),
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True),
             nn.ConvTranspose2d(256, 128, 5, bias=False),
-            # nn.BatchNorm2d(128),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(inplace=True),
             nn.ConvTranspose2d(128, 64, 7, stride=2, bias=False),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(64, 3, 7, stride=2, padding=2, output_padding=1,
+            nn.ConvTranspose2d(64, 4, 7, stride=2, padding=2, output_padding=1,
                                bias=False)
         )
 
@@ -154,9 +154,57 @@ class ActionEncoder(nn.Module):
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.BatchNorm1d(hidden_dim),
                 nn.LeakyReLU(0.2),
+                nn.Dropout(0.3)
             ) for _ in range(hidden_layers)],
             nn.Linear(hidden_dim, latent_dim)
         )
 
     def forward(self, x):
         return self.layers(x)
+
+
+class ActionGenerator(nn.Module):
+    def __init__(self, action_dim, timesteps):
+        super(ActionGenerator, self).__init__()
+
+        self.timesteps = timesteps
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(64, 128, 7, stride=2, bias=False),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(128, 256, 5, bias=False),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(256, 512, 5, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(512, 512, 5, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(inplace=True),
+        )
+
+        self.lstm = nn.LSTM(512, 512, 2, dropout=0.3)
+
+        self.fc = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.Linear(512, action_dim),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        batch_size = len(x)
+
+        x = self.conv(x)
+        x = x.view(batch_size, -1)
+
+        x = x.unsqueeze(0).repeat(self.timesteps, 1, 1)
+
+        x, _ = self.lstm(x)
+        x = x.view(self.timesteps * batch_size, -1)
+        x = self.fc(x)
+
+        return x

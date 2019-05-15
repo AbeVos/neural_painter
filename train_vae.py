@@ -6,7 +6,7 @@ import torch
 import torch.optim as optim
 
 from torch.utils.data import DataLoader
-from torchvision.utils import make_grid
+from torchvision.utils import save_image
 
 from models import VAE
 from dataset.dataset import BrushStrokeDataset
@@ -29,12 +29,7 @@ def save_sample_plot(samples, filename, nrow=5):
     """
     Save a plot of a number of images sampled from the generator.
     """
-    plt.figure()
-    grid = make_grid(samples, nrow=nrow).cpu()
-    plt.imshow(grid.permute(1, 2, 0))
-    plt.axis('off')
-    plt.savefig(filename)
-    plt.close()
+    save_image(samples[:, :-1, ...], filename, nrow=nrow)
 
 
 def train(dataset, model, optimizer, device, num_epochs=100,
@@ -65,7 +60,7 @@ def train(dataset, model, optimizer, device, num_epochs=100,
                 save_elbo_plot(elbo_plot, "elbo.png")
 
                 mean_elbo = sum(elbo_plot[-eval_interval:]) / eval_interval
-                print(f"Epoch {epoch:03d}, batch {idx:05d} | "
+                print(f"Epoch {epoch+1:03d}, batch {idx:05d} | "
                       f"ELBO: {mean_elbo}")
 
                 model.eval()
