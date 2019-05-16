@@ -12,6 +12,13 @@ from torchvision.datasets import ImageFolder
 from models import VAE, ActionEncoder, ActionGenerator
 
 
+def blend(src, dst):
+    alpha = src[:, -1, ...].unsqueeze(1)
+    src = src[:, :-1, ...]
+
+    return alpha * src + (1 - alpha) * dst
+
+
 def train(model, encoder, decoder, dataset, optimizer, timesteps=20):
     dataloader = DataLoader(dataset, shuffle=True, batch_size=32,
                             num_workers=4)
@@ -20,28 +27,31 @@ def train(model, encoder, decoder, dataset, optimizer, timesteps=20):
 
     loss_plot = []
 
-    for idx, [images, _] in enumerate(dataloader):
+    for idx, (images, _) in enumerate(dataloader):
         while True:
             images = images.to(args.device)
-            code = model(images)
+            canvas = torch.ones_like(images).to(args.device)[:, :3]
 
+            code = model(images)
+            print(code)
+            # code = torch.rand(code.shape).to(args.device)
             z = encoder(code)
-            strokes = decoder(z).view(timesteps, len(images), 3, 64, 64)
-            strokes = torch.sigmoid(strokes)
+            strokes = decoder(z).view(timesteps, len(images), 4, 64, 64)
 
             # Blend the strokes into a single painting.
-            paintings = strokes.mean(0)
+            for step, stroke in enumerate(strokes):
+                canvas = blend(stroke, canvas)
 
-            loss = criterion(paintings, images)
+            loss = criterion(canvas, images)
 
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            # loss.backward()
+            # optimizer.step()
+            # optimizer.zero_grad()
 
             loss_plot.append(loss.item())
 
             if idx % 50 == 0:
-                results = torch.cat((paintings[:5], images[:5]), 0)
+                results = torch.cat((canvas[:5], images[:5]), 0)
 
                 print(idx, loss.item())
                 save_image(results, f"samples/painting_{idx:05d}.png", nrow=5)
@@ -84,12 +94,12 @@ if __name__ == "__main__":
     dataset = ImageFolder('valid_64x64/', transform=transforms.ToTensor()) 
 
     encoder = ActionEncoder(
-        args.action_dim, args.latent_dim, 256, 3).to(args.device)
+        args.action_dim, args.latent_dim, 256, 5).to(args.device)
     encoder.load_state_dict(torch.load(args.encoder))
-    vae = VAE(32, args.device).to(args.device)
+    vae = VAE(args.latent_dim, args.device).to(args.device)
     vae.load_state_dict(torch.load(args.vae))
 
-    model = ActionGenerator(11, args.timesteps).to(args.device)
+    model = ActionGenerator(args/action_dim, args.timesteps).to(args.device)
     optimizer = optim.Adam(model.parameters())
 
     train(model, encoder, vae.decoder, dataset, optimizer, args.timesteps)

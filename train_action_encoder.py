@@ -13,9 +13,9 @@ from dataset.transform import ToTensor
 
 
 def save_recon_plot(original, reconstructed, painted, filename):
-    original = make_grid(original[:5], nrow=5)
-    reconstructed = make_grid(reconstructed[:5], nrow=5)
-    painted = make_grid(painted[:5], nrow=5)
+    original = make_grid(original[:5, :-1], nrow=5)
+    reconstructed = make_grid(reconstructed[:5, :-1], nrow=5)
+    painted = make_grid(painted[:5, :-1], nrow=5)
 
     plt.figure()
     plt.subplot(311)
@@ -38,11 +38,11 @@ def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
           batch_size=128):
     criterion = nn.MSELoss()
 
+    mean_loss = []
+
     for epoch in range(epochs):
         dataloader = DataLoader(
             dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-
-        mean_loss = []
 
         for idx, batch in enumerate(dataloader):
             images, params = batch['image'], batch['parameters']
@@ -61,15 +61,18 @@ def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
 
             mean_loss.append(loss.item())
 
-        mean_loss = sum(mean_loss) / len(mean_loss)
+            if idx % args.eval_interval == 0:
+                mean_loss = sum(mean_loss) / len(mean_loss)
 
-        print(f"Epoch {epoch+1}: loss: {mean_loss}")
+                print(f"Epoch {epoch+1}: loss: {mean_loss}")
 
-        recon = torch.sigmoid(vae.decoder(code))
-        pred = torch.sigmoid(vae.decoder(pred))
+                recon = vae.decoder(code)
+                pred = vae.decoder(pred)
 
-        save_recon_plot(
-            images, recon, pred, f"samples/recon_{epoch+1:03d}.png")
+                save_recon_plot(
+                    images, recon, pred, f"samples/recon_{epoch+1:03d}.png")
+
+                mean_loss = []
 
 
 if __name__ == "__main__":
@@ -88,20 +91,26 @@ if __name__ == "__main__":
         help=""
     )
     parser.add_argument(
+        '--eval_interval', type=int, default=100,
+        help="")
+    parser.add_argument(
+        '--data_root', dest='root', default='images_10k',
+        help="")
+    parser.add_argument(
         '--device', dest='device', type=str, default='cuda:0',
         help="")
     args = parser.parse_args()
 
     device = torch.device(args.device)
 
-    dataset = BrushStrokeDataset('labels.csv', 'images/',
-                                 transform=ToTensor())
+    dataset = BrushStrokeDataset(os.path.join(args.root, 'labels.csv'),
+                                 args.root, transform=ToTensor())
 
     vae = VAE(args.latent_dim, device).to(device)
     vae.load_state_dict(torch.load(args.vae_model))
     vae.eval()
 
-    model = ActionEncoder(args.action_dim, args.latent_dim, 256, 3).to(device)
+    model = ActionEncoder(args.action_dim, args.latent_dim, 256, 5).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 

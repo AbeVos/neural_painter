@@ -139,14 +139,17 @@ if __name__ == "__main__":
                              "saving them.")
     args = parser.parse_args()
 
+    os.makedirs(args.path, exist_ok=True)
+    label_path = os.path.join(args.path, 'labels.csv')
+
     if not args.test:
-        with open("labels.csv", 'w') as file:
+        with open(label_path, 'w') as file:
             file.write("index;image;start_x;start_y;ctrl_x;ctrl_y;end_x;end_y;red;"
                        "green;blue;start_size;end_size\n")
 
         for idx, (image, params) in enumerate(stroke_generator(args.n, args.size)):
             save_image(image, args.path, f"image_{idx:08d}.png")
-            save_label("labels.csv", idx, *params)
+            save_label(label_path, idx, *params)
     else:
         for idx, (image, params) in enumerate(stroke_generator(9, args.size)):
             plt.subplot(3, 3, idx+1)
