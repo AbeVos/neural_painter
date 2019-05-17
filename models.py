@@ -303,10 +303,47 @@ class ActionGenerator(nn.Module):
         x = self.conv(x)
         x = x.view(batch_size, -1)
 
-        x = x.unsqueeze(0).repeat(self.timesteps, 1, 1)
+        x = x.unsqueeze(0)
 
-        x, _ = self.lstm(x)
-        x = x.view(self.timesteps * batch_size, -1)
-        x = self.fc(x)
+        Y = []
+        h = None
 
-        return x
+        for i in range(self.timesteps):
+            y, h = self.lstm(x, h)
+            Y.append(y)
+
+        y = torch.stack(Y, dim=0)
+        y = y.view(self.timesteps * batch_size, -1)
+        y = self.fc(y)
+
+        return y
+
+
+class PaintingDiscriminator(nn.Module):
+    def __init__(self, action_dim):
+        super(PaintingDiscriminator, self).__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 64, 7, stride=2, padding=3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, 7, stride=2),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, 5),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(512, 512, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 1, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.conv(x)
