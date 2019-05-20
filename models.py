@@ -36,19 +36,19 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(4, 64, 7, stride=2, padding=3, bias=False),
+            nn.Conv2d(4, 64, 7, stride=2, padding=3),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(64, 128, 7, stride=2, bias=False),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(64, 128, 7, stride=2),
+            # nn.BatchNorm2d(128),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(128, 256, 5, bias=False),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(128, 256, 5),
+            # nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(256, 512, 5, bias=False),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(256, 512, 5),
+            # nn.BatchNorm2d(512),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(512, 512, 5, bias=False),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(512, 512, 5),
+            # nn.BatchNorm2d(512),
             nn.LeakyReLU(inplace=True),
         )
 
@@ -76,38 +76,52 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         self.fc = nn.Sequential(
-            nn.Linear(latent_dim, 512),
+            nn.Linear(latent_dim - 3, 512),
             nn.LeakyReLU(),
             nn.Linear(512, 512),
             nn.LeakyReLU(),
         )
 
         self.conv = nn.Sequential(
-            nn.ConvTranspose2d(512, 512, 5, bias=False),
-            nn.BatchNorm2d(512),
+            nn.ConvTranspose2d(512, 512, 5),
+            # nn.BatchNorm2d(512),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(512, 256, 5, bias=False),
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(512, 256, 5),
+            # nn.BatchNorm2d(256),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(256, 128, 5, bias=False),
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(256, 128, 5),
+            # nn.BatchNorm2d(128),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(128, 64, 7, stride=2, bias=False),
+            nn.ConvTranspose2d(128, 64, 7, stride=2),
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(64, 4, 7, stride=2, padding=2, output_padding=1,
-                               bias=False)
+            nn.ConvTranspose2d(64, 1, 7, stride=2, padding=2,
+                               output_padding=1),
+            nn.Sigmoid()
+        )
+
+        self.color = nn.Sequential(
+            nn.Linear(3, 16),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(16, 3),
+            nn.Sigmoid()
         )
 
     def forward(self, z):
+        color = self.color(z[:, -3:])
+        z = z[:, :-3]
         z = self.fc(z)
         z = z.view(len(z), 512, 1, 1)
 
         # return self.upsample(z)
-        return self.conv(z)
+        alpha = self.conv(z)
+        alpha = alpha.repeat((1, 4, 1, 1))
+        alpha[:, :3, ...] *= color[..., None, None]
+
+        return alpha
 
 
 class VAE(nn.Module):
-    def __init__(self, latent_dim, device):
+    def __init__(self, latent_dim, device, beta=1):
         super(VAE, self).__init__()
 
         self.latent_dim = latent_dim
@@ -116,7 +130,9 @@ class VAE(nn.Module):
         self.encoder = Encoder(latent_dim).to(device)
         self.decoder = Decoder(latent_dim).to(device)
 
-        self.recon_loss = nn.BCEWithLogitsLoss(reduction='sum')
+        self.recon_loss = nn.BCELoss(reduction='sum')
+
+        self.beta = beta
 
     def forward(self, image):
         def kl_divergence(mean, logvar):
@@ -131,7 +147,7 @@ class VAE(nn.Module):
 
         D_kl = kl_divergence(mean, logvar).mean()
         recon_loss = self.recon_loss(recon, image) / len(image)
-        elbo = recon_loss + D_kl
+        elbo = recon_loss + self.beta * D_kl
 
         return elbo
 
@@ -139,7 +155,7 @@ class VAE(nn.Module):
         if z is None:
             z = torch.randn(n_samples, self.latent_dim).to(self.device)
 
-        images = torch.sigmoid(self.decoder(z)).detach()
+        images = self.decoder(z).detach()
 
         return images, z
 
@@ -149,18 +165,104 @@ class ActionEncoder(nn.Module):
         super(ActionEncoder, self).__init__()
 
         self.layers = nn.Sequential(
-            nn.Linear(action_dim, hidden_dim),
+            nn.Linear(action_dim - 3, hidden_dim),
             *[nn.Sequential(
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.BatchNorm1d(hidden_dim),
                 nn.LeakyReLU(0.2),
                 nn.Dropout(0.3)
             ) for _ in range(hidden_layers)],
-            nn.Linear(hidden_dim, latent_dim)
+            nn.Linear(hidden_dim, latent_dim - 3),
+        )
+
+        self.color = nn.Sequential(
+            nn.Linear(3, 16),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(16, 3),
         )
 
     def forward(self, x):
-        return self.layers(x)
+        color = x[:, 6:9]
+        x = torch.cat((x[:, :6], x[:, 9:]), 1)
+
+        x = self.layers(x)
+        color = self.color(color)
+
+        return torch.cat((x, color), 1)
+
+
+class StrokeGenerator(nn.Module):
+    def __init__(self, action_dim):
+        super(StrokeGenerator, self).__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(action_dim, 512, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 512, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.ConvTranspose2d(512, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(512, 256, 5),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(256, 128, 5),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(128, 64, 7, stride=2),
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(64, 4, 7, stride=2, padding=2,
+                               output_padding=1),
+            nn.Tanh(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class StrokeDiscriminator(nn.Module):
+    def __init__(self, action_dim):
+        super(StrokeDiscriminator, self).__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(4, 64, 7, stride=2, padding=3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, 7, stride=2),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, 5),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+
+        self.condition = nn.Sequential(
+            nn.Linear(action_dim, 512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+
+        self.output = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(512, 1),
+            nn.Sigmoid(inplace=True)
+        )
+
+    def forward(self, x, c):
+        x = self.conv(x)
+        c = self.condition(c)
+
+        x = torch.stack((x.squeeze(), c), -1)
+
+        return self.output(x)
 
 
 class ActionGenerator(nn.Module):
@@ -170,23 +272,23 @@ class ActionGenerator(nn.Module):
         self.timesteps = timesteps
 
         self.conv = nn.Sequential(
-            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(64, 128, 7, stride=2, bias=False),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(128, 256, 5, bias=False),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(256, 512, 5, bias=False),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(512, 512, 5, bias=False),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(3, 64, 7, stride=2, padding=3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, 7, stride=2),
+            # nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, 5),
+            # nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, 5),
+            # nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 512, 5),
+            # nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
         )
 
-        self.lstm = nn.LSTM(512, 512, 2, dropout=0.3)
+        self.lstm = nn.LSTM(512, 512, 2, dropout=0.0)
 
         self.fc = nn.Sequential(
             nn.Linear(512, 512),
@@ -201,10 +303,47 @@ class ActionGenerator(nn.Module):
         x = self.conv(x)
         x = x.view(batch_size, -1)
 
-        x = x.unsqueeze(0).repeat(self.timesteps, 1, 1)
+        x = x.unsqueeze(0)
 
-        x, _ = self.lstm(x)
-        x = x.view(self.timesteps * batch_size, -1)
-        x = self.fc(x)
+        Y = []
+        h = None
 
-        return x
+        for i in range(self.timesteps):
+            y, h = self.lstm(x, h)
+            Y.append(y)
+
+        y = torch.stack(Y, dim=0)
+        y = y.view(self.timesteps * batch_size, -1)
+        y = self.fc(y)
+
+        return y
+
+
+class PaintingDiscriminator(nn.Module):
+    def __init__(self, action_dim):
+        super(PaintingDiscriminator, self).__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 64, 7, stride=2, padding=3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, 7, stride=2),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, 5),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 512, 5),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(512, 512, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 1, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.conv(x)
