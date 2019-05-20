@@ -12,20 +12,16 @@ from spline import Spline
 
 
 def sample_brush(diameter, std=1, color=(1, 1, 1)):
-    color = list(color) + [1]
+    if len(color) is 3:
+        color = list(color) + [1]
+    elif len(color) is 4:
+        color = list(color)
+    else:
+        raise ValueError("`color` should be a tuple of length 3 or 4.")
+
     brush = np.ones((diameter, diameter, 4)) * np.array(color)[None, None, :]
 
-    x = np.linspace(-1 / std, 1 / std, diameter)
-    xv, yv = np.meshgrid(x, x)
-
-    normal = norm.pdf(xv, 0, 1) * norm.pdf(yv, 0, 1)
-    normal /= normal.max()
-    normal = np.clip(normal * 2, 0, 1)
-
-    mask = np.random.random((diameter, diameter))
-    mask = ndimage.gaussian_filter(mask, sigma=0.5)
-    mask = mask * normal
-    # mask /= mask.max()
+    mask = sample_alpha(diameter, std)
 
     brush[..., -1] *= mask
     brush = 255 * np.max([np.zeros_like(brush), brush], 0)
@@ -44,6 +40,21 @@ def draw_point(image, position, color, brush_size=1):
     image.paste(brush_color, tuple(position), mask)
 
     return image
+
+
+def sample_alpha(diameter, std=1):
+    x = np.linspace(-1 / std, 1 / std, diameter)
+    xv, yv = np.meshgrid(x, x)
+
+    normal = norm.pdf(xv, 0, 1) * norm.pdf(yv, 0, 1)
+    normal /= normal.max()
+    normal = np.clip(normal * 2, 0, 1)
+
+    mask = np.random.random((diameter, diameter))
+    mask = ndimage.gaussian_filter(mask, sigma=0.5)
+    mask = mask * normal
+
+    return mask
 
 
 def draw_line(image, start, end, color, start_size=0.4, end_size=0.3):
