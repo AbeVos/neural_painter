@@ -5,163 +5,178 @@ import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from scipy.stats import norm
-from scipy import ndimage
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from spline import Spline
 
 
-def sample_brush(diameter, std=1, color=(1, 1, 1)):
-    if len(color) is 3:
-        color = list(color) + [1]
-    elif len(color) is 4:
-        color = list(color)
-    else:
-        raise ValueError("`color` should be a tuple of length 3 or 4.")
+def brush_gaussian(diameter):
+    """
+    Create a Gaussian alphamap of a given diameter.
+    The Gaussian's standard deviation is set to fit the curve from the 0.001-th
+    to the 0.999-th percentile within `diameter`.
+    """
+    diameter = int(round(diameter))
+    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), diameter)
 
-    brush = np.ones((diameter, diameter, 4)) * np.array(color)[None, None, :]
+    xx, yy = np.meshgrid(x, x)
+    normal = norm.pdf(xx, 0, 1) * norm.pdf(yy, 0, 1)
 
-    mask = sample_alpha(diameter, std)
-
-    brush[..., -1] *= mask
-    brush = 255 * np.max([np.zeros_like(brush), brush], 0)
-    return brush
-
-
-def draw_point(image, position, color, brush_size=1):
-    size = int(48 * brush_size)
-    brush = sample_brush(size, 0.3, color).astype(np.uint8)
-    brush_color = Image.fromarray(brush[..., :-1])
-    mask = Image.fromarray(brush[..., -1])
-
-    position = np.array(position) - size // 2
-    position = position.astype(int)
-
-    image.paste(brush_color, tuple(position), mask)
-
-    return image
-
-
-def sample_alpha(diameter, std=1):
-    x = np.linspace(-1 / std, 1 / std, diameter)
-    xv, yv = np.meshgrid(x, x)
-
-    normal = norm.pdf(xv, 0, 1) * norm.pdf(yv, 0, 1)
     normal /= normal.max()
-    normal = np.clip(normal * 2, 0, 1)
 
-    mask = np.random.random((diameter, diameter))
-    mask = ndimage.gaussian_filter(mask, sigma=0.5)
-    mask = mask * normal
-
-    return mask
+    return normal
 
 
-def draw_line(image, start, end, color, start_size=0.4, end_size=0.3):
-    start = np.array(start)
-    end = np.array(end)
-
-    distance = np.sqrt(np.sum(np.square(end - start)))
-
-    for t in np.linspace(0, 1, int(distance)):
-        position = (1 - t) * start + t * end
-        size = (1 - t) * start_size + t * end_size
-
-        draw_point(image, position, color, size)
-
-
-def evaluate_2spline(a, b, c, t):
+def draw_alpha(dst, src, position):
     """
-    Evaluate a piecewise polynomial of n=2.
+    Draw a small alphamap onto a larger one.
+    The source alphamap can be offset if.
     """
-    x = 2 * t
+    x, y = position
+    h, w = src.shape
+    H, W = dst.shape
 
-    center = b * x * (2 - x)
-    a = a if x < 1 else c
+    x -= w // 2
+    y -= h // 2
 
-    return a * x ** 2 - 2 * a * x + a + center
+    # Correct src if it draws outside the dst borders.
+    if y < 0:
+        src = src[abs(y):]
+        y = 0
+    if x < 0:
+        src = src[:, abs(x):]
+        x = 0
+
+    h, w = src.shape
+
+    if H - (h + y) < 0:
+        src = src[:H - (h + y)]
+    if W - (w + x) < 0:
+        src = src[:, :W - (w + x)]
+
+    # Blend the source image with the patch of the destination image.
+    patch = dst[y:y+h, x:x+w]
+    patch = src + (1 - src) * patch
+
+    dst[y:y+h, x:x+w] = patch
 
 
-def draw_curve(image, start, control, end, color, sizes=(0.4, 0.6, 0.4)):
+def draw_curve(dst, start, control, end, size_start, size_end,
+               brush=brush_gaussian):
+    """
+    Draw a spline curve unto a canvas.
+    """
     def distance(p, q):
-        return np.sqrt(np.sum(np.square(q - p)))
+        """Euclidian distance between two points."""
+        return np.sqrt(np.sum(np.square(np.subtract(q, p))))
+
+    # Resize values to canvas size.
+    dst_size = dst.shape[0]
+
+    start = np.array(start) * dst_size
+    control = np.array(control) * dst_size
+    end = np.array(end) * dst_size
+    size_start *= dst_size
+    size_end *= dst_size
 
     spline = Spline(start, control, end)
     n = int(distance(start, control) + distance(control, end))
 
     for t in np.linspace(0, 1, n):
-        position = spline.evaluate(t) + np.random.randn(2)
-        # size = evaluate_2spline(*sizes, t)
-        size = (1 - t) * sizes[0] + t * sizes[1]
+        size = (1 - t) * size_start + t * size_end
 
-        draw_point(image, position, color, size)
+        noise = size / (0.5 * dst_size) * np.random.rand(2)
+        x, y = spline.evaluate(t) + noise
 
-
-def save_image(image, path, filename):
-    if not os.path.isdir(path):
-        os.mkdir(path)
-
-    image.save(os.path.join(path, filename))
+        draw_alpha(dst, brush(size), (int(round(x)), int(round(y))))
 
 
-def float2uint8(value, maximum=1):
-    value /= maximum
-    return int(256 * value)
+def generate_parameters():
+    start, control, end = np.random.rand(3, 2)
+    color = np.random.rand(3)
+    start_size, end_size = np.random.random(2) * 0.25 + 0.05
+
+    return (start, control, end), color, (start_size, end_size)
 
 
-def save_label(path, idx, start, control, end, color, sizes):
-    start_x, start_y = [float2uint8(value, 255) for value in start]
-    ctrl_x, ctrl_y = [float2uint8(value, 255) for value in control]
-    end_x, end_y = [float2uint8(value, 255) for value in end]
+def stroke_generator(n, size=64):
+    for idx in range(n):
+        # Create random stroke parameters.
+        positions, color, sizes = generate_parameters()
 
-    red, green, blue = [float2uint8(value) for value in color]
-    start_size, end_size = [float2uint8(value) for value in sizes]
+        # Initialize a canvas with `color`.
+        canvas = np.ones((size, size, 3))
+        canvas *= color
 
-    with open(path, 'a') as file:
-        file.write(f"{idx};image_{idx:08d}.png;{start_x};{start_y};{ctrl_x};"
-                   f"{ctrl_y};{end_x};{end_y};{red};{green};{blue};"
-                   f"{start_size};{end_size}\n")
+        # Initialize an empty alphamap.
+        alphamap = np.zeros((size, size))
+
+        # Draw the curve onto the alphamap.
+        draw_curve(alphamap, *positions, *sizes)
+
+        # Combine the colored canvas and the stroke's alphamap.
+        canvas = np.concatenate((canvas, alphamap[..., None]), -1)
+
+        yield canvas, (positions, color, sizes)
 
 
-def stroke_generator(n, size):
-    for i in tqdm(range(n)):
-        image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+def generate_strokes(args):
+    label_path = os.path.join(args.output_root, 'labels.csv')
+    image_root = os.path.join(args.output_root, 'images')
 
-        color = np.random.random(3)
-        start, control, end = np.random.random((3, 2)) * size
-        sizes = np.random.random(2) * 0.6 + 0.1
+    os.makedirs(image_root, exist_ok=True)
+    label = "{};{};{};{};{};{};{};{};{};{};{};{};{}\n"
+    header = label.format('index', 'image', 'start_x', 'start_y', 'ctrl_x',
+                          'ctrl_y', 'end_x', 'end_y', 'red', 'green', 'blue',
+                          'size_start', 'size_end')
 
-        draw_curve(image, start, control, end, color, sizes)
+    with open(label_path, 'w') as file:
+        file.write(header)
 
-        yield image, (start, control, end, color, sizes)
+        for idx, (stroke, parameters) in tqdm(enumerate(
+                stroke_generator(args.number, args.size))): 
+            image_name = f"stroke_{idx:08d}.png"
+            image_path = os.path.join(image_root, image_name)
+
+            stroke = (256 * stroke).astype(np.uint8)
+            image = Image.fromarray(stroke)
+
+            positions, color, sizes = parameters
+            positions = (255 * np.array(positions)).astype(np.uint8).ravel()
+            color = (255 * np.array(color)).astype(np.uint8)
+            sizes = (255 * np.array(sizes)).astype(np.uint8)
+
+            row = label.format(idx, image_name, *positions, *color, *sizes)
+            file.write(row)
+
+            image.save(image_path)
+
+
+def test_strokes():
+    """
+    Generate 25 test strokes and plot them.
+    """
+    for idx, (stroke, _) in tqdm(enumerate(stroke_generator(25)), total=25):
+        plt.subplot(5, 5, idx+1)
+        plt.imshow(stroke)
+        plt.axis('off')
+
+    plt.show()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Generate a brush stroke dataset.")
-    parser.add_argument('-n', type=int,
-                        help="Number of samples to generate.")
-    parser.add_argument('-o', dest='path', type=str, default='images/',
-                        help="Directory to save images to.")
-    parser.add_argument('--size', dest='size', type=int, default=64,
-                        help="Image size.")
+    parser = argparse.ArgumentParser(description="Generate a stroke dataset.")
+    parser.add_argument('-n', dest='number', type=int, default=100,
+                        help="Number of images to generate.")
+    parser.add_argument('-s', dest='size', type=int, default=64,
+                        help="Size of the images.")
+    parser.add_argument('-o', dest='output_root', type=str, default='strokes/',
+                        help="DIrectory to write the data to.")
     parser.add_argument('-t', dest='test', action='store_true',
-                        help="Generate a number of test images without"
-                             "saving them.")
+                        help="Draw a number of test strokes and exit.")
     args = parser.parse_args()
 
-    if not args.test:
-        with open("labels.csv", 'w') as file:
-            file.write("index;image;start_x;start_y;ctrl_x;ctrl_y;end_x;end_y;red;"
-                       "green;blue;start_size;end_size\n")
-
-        for idx, (image, params) in enumerate(stroke_generator(args.n, args.size)):
-            save_image(image, args.path, f"image_{idx:08d}.png")
-            save_label("labels.csv", idx, *params)
+    if args.test:
+        test_strokes()
     else:
-        for idx, (image, params) in enumerate(stroke_generator(9, args.size)):
-            plt.subplot(3, 3, idx+1)
-            plt.imshow(image)
-            plt.axis('off')
-
-        plt.show()
+        generate_strokes(args)
