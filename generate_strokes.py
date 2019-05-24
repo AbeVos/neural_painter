@@ -134,11 +134,11 @@ def generate_strokes(args):
         file.write(header)
 
         for idx, (stroke, parameters) in tqdm(enumerate(
-                stroke_generator(args.number, args.size))): 
+                stroke_generator(args.number, args.size)), total=args.number): 
             image_name = f"stroke_{idx:08d}.png"
             image_path = os.path.join(image_root, image_name)
 
-            stroke = (256 * stroke).astype(np.uint8)
+            stroke = (255 * stroke).astype(np.uint8)
             image = Image.fromarray(stroke)
 
             positions, color, sizes = parameters
