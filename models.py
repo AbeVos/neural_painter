@@ -2,18 +2,6 @@ import torch
 import torch.nn as nn
 
 
-class VAEPainter(VAE):
-    """
-    Replace the decoder with a DecoderPainter to create a VAEPainter.
-    """
-    def __init__(self, latent_dim, device, beta=1):
-        super(VAEPainter, self).__init__(latent_dim, device, beta)
-
-        self.decoder = DecoderPainter()
-        
-        self.recon_loss = nn.BCELoss(reduction='sum')
-
-
 class ActionEncoder(nn.Module):
     def __init__(self, action_dim, latent_dim, hidden_dim, hidden_layers):
         super(ActionEncoder, self).__init__()

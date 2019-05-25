@@ -77,14 +77,14 @@ if __name__ == "__main__":
     train_data = ImageFolder('train_64x64/', transform=transforms.ToTensor())
     # valid_data = ImageFolder('valid_64x64/', transform=transforms.ToTensor())
 
-    vae = VAE(latent_dim=1024, device=device)
+    vae = VAE(latent_dim=512, device=device)
 
     if args.continuing:
         vae.load_state_dict(torch.load(args.model))
 
     epochs = 10
 
-    lr = torch.linspace(5e-5, 1e-5, epochs)
+    lr = torch.linspace(1e-4, 1e-5, epochs)
 
     for epoch in range(epochs):
         print(f"Epoch: {epoch:03d}")

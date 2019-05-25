@@ -49,15 +49,19 @@ class Encoder(nn.Module):
         self.layers = nn.Sequential(
             nn.Conv2d(3, 128, 5, stride=2),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(128),
 
             nn.Conv2d(128, 256, 5, stride=2),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(256),
 
             nn.Conv2d(256, 512, 5, stride=2),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(512),
 
             nn.Conv2d(512, 1024, 5, stride=2),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(1024),
         )
 
         self.mean = nn.Linear(1024, latent_dim)
