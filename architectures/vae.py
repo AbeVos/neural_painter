@@ -25,14 +25,15 @@ class Upsample(nn.Module):
     Replaces the ConvTranspose2d layer by upsampling the image and
     applying a regular Conv2d layer to it.
     """
-    def __init__(self, scale_factor, channels_in, channels_out, kernel_size):
+    def __init__(self, scale_factor, channels_in, channels_out):
         super(Upsample, self).__init__()
 
         self.layers = nn.Sequential(
             Interpolate(scale_factor, mode='bilinear', align_corners=False),
-            nn.ReflectionPad2d(kernel_size // 2),
-            nn.Conv2d(channels_in, channels_out, kernel_size, stride=1,
-                      padding=0)
+            nn.ReflectionPad2d(2),
+            nn.Conv2d(channels_in, channels_out, 3, stride=1, padding=0),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(channels_out, channels_out, 3, stride=1, padding=0),
         )
 
     def forward(self, x):
@@ -43,42 +44,53 @@ class Encoder(nn.Module):
     """
     Encoder based on the DCGAN architecture.
     """
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, color_channels=3):
         super(Encoder, self).__init__()
 
         self.layers = nn.Sequential(
-            nn.Conv2d(3, 128, 5, stride=2),
+            nn.Conv2d(color_channels, 128, 3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, 3, stride=2, padding=2),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(128),
 
-            nn.Conv2d(128, 256, 5, stride=2),
+            nn.Conv2d(128, 128, 3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(128),
+            nn.Conv2d(128, 256, 3, stride=2, padding=2),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(256),
 
-            nn.Conv2d(256, 512, 5, stride=2),
+            nn.Conv2d(256, 256, 3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(256),
+            nn.Conv2d(256, 512, 3, stride=2, padding=2),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(512),
 
-            nn.Conv2d(512, 1024, 5, stride=2),
+            nn.Conv2d(512, 512, 3),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(512),
+            nn.Conv2d(512, 1024, 3, stride=2, padding=2),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(1024),
         )
 
-        self.mean = nn.Linear(1024, latent_dim)
-        self.logvar = nn.Linear(1024, latent_dim)
+        self.mean = nn.Conv2d(1024, latent_dim, 4)
+        self.logvar = nn.Conv2d(1024, latent_dim, 4)
 
     def forward(self, x):
         x = self.layers(x)
-        x = x.view(len(x), -1)
 
-        return self.mean(x), self.logvar(x)
+        return self.mean(x).squeeze(), self.logvar(x).squeeze()
 
 
 class Decoder(nn.Module):
     """
     Decoder based on the DCGAN architecture.
     """
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, color_channels=3):
         super(Decoder, self).__init__()
 
         self.latent_dim = latent_dim
@@ -87,16 +99,16 @@ class Decoder(nn.Module):
             nn.ConvTranspose2d(latent_dim, 1024, 4, stride=2),
             nn.LeakyReLU(0.2, inplace=True),
 
-            Upsample(2, 1024, 512, 5),
+            Upsample(2, 1024, 512),
             nn.LeakyReLU(0.2, inplace=True),
 
-            Upsample(2, 512, 256, 5), 
+            Upsample(2, 512, 256), 
             nn.LeakyReLU(0.2, inplace=True),
 
-            Upsample(2, 256, 128, 5), 
+            Upsample(2, 256, 128), 
             nn.LeakyReLU(0.2, inplace=True),
 
-            Upsample(2, 128, 3, 5), 
+            Upsample(2, 128, color_channels), 
         )
 
     def forward(self, z):
@@ -106,14 +118,14 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, latent_dim, device, beta=1):
+    def __init__(self, latent_dim, device, color_channels=3, beta=1):
         super(VAE, self).__init__()
 
         self.latent_dim = latent_dim
         self.device = device
 
-        self.encoder = Encoder(latent_dim).to(device)
-        self.decoder = Decoder(latent_dim).to(device)
+        self.encoder = Encoder(latent_dim, color_channels=color_channels).to(device)
+        self.decoder = Decoder(latent_dim, color_channels=color_channels).to(device)
 
         self.recon_loss = nn.BCEWithLogitsLoss(reduction='sum')
 

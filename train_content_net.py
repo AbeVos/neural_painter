@@ -25,6 +25,7 @@ def train_epoch(dataset, model, optimizer, eval_interval=10, device='cuda:0',
                             num_workers=4)
     agg_elbo = 0
     elbo_plot = []
+    min_plot = []
     noise = torch.randn(64, model.latent_dim).to(device)
 
     for idx, (images, _) in enumerate(dataloader):
@@ -44,16 +45,23 @@ def train_epoch(dataset, model, optimizer, eval_interval=10, device='cuda:0',
             elbo_plot.append(mean_elbo)
             agg_elbo = 0
 
-            print(f"\tStep: {idx:05d} | ELBO: {mean_elbo}")
+            if len(min_plot) is 0 or mean_elbo < min_plot[-1]:
+                torch.save(model.state_dict(), model_path)
+                min_plot.append(mean_elbo)
+            else:
+                min_plot.append(min_plot[-1])
+
+            print(f"\tStep: {idx:05d} | ELBO: {mean_elbo} | "
+                  f"min ELBO: {min_plot[-1]}")
 
             model.eval()
             samples = torch.sigmoid(model.decoder(noise))
             save_image(samples[:64], sample_path, nrow=8)
-            torch.save(model.state_dict(), model_path)
             model.train()
 
             plt.figure()
             plt.plot(elbo_plot)
+            plt.plot(min_plot)
             plt.xlabel("Step")
             plt.ylabel("ELBO")
             plt.savefig(plot_path)

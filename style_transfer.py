@@ -77,7 +77,7 @@ if __name__ == "__main__":
             
             break
 
-    style_weight = [5, 4, 1]
+    style_weight = [0.5, 0.4, 0.1]
     style_models = [model[:1], model[:3], model[:5]]
     content_model = model
 
@@ -88,12 +88,14 @@ if __name__ == "__main__":
     content_loss = ContentLoss(content_model, content_img)
     
     # Mix the content image with some noise to get a begin state.
-    alpha = 0.5
+    alpha = 0.4
     image = alpha * content_img.clone() \
          + (1 - alpha) * torch.rand(1, 3, img_size, img_size).to(device)
     optimizer = optim.LBFGS([image.requires_grad_()])
 
-    for step in range(10):
+    for step in range(15):
+        print(f"Step {step+1}")
+
         def closure():
             optimizer.zero_grad()
             image.data.clamp_(0, 1)
@@ -111,9 +113,6 @@ if __name__ == "__main__":
 
         optimizer.step(closure)
         image.data.clamp_(0, 1)
-
-        # print(f"Step {step}: {loss.item()}")
-        print(f"Step {step+1}")
 
         images = torch.cat((content_img, image, style_img), dim=0)
         save_image(images, "samples/style_transfer.png", nrow=3)
