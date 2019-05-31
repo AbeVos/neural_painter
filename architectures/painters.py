@@ -46,18 +46,15 @@ class ActionEncoder(nn.Module):
         super(ActionEncoder, self).__init__()
 
         self.layers = nn.Sequential(
-            nn.Linear(action_dim - 3, hidden_dim),
+            nn.Linear(action_dim, hidden_dim),
             *[nn.Sequential(
                 nn.Linear(hidden_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),
+                nn.Dropout(0.1),
                 nn.LeakyReLU(0.2),
-                nn.Dropout(0.1)
+                nn.BatchNorm1d(hidden_dim),
             ) for _ in range(hidden_layers)],
-            nn.Linear(hidden_dim, latent_dim - 3),
+            nn.Linear(hidden_dim, latent_dim),
         )
 
     def forward(self, x):
-        color = x[:, 6:9]
-        x = torch.cat((x[:, :6], x[:, 9:]), 1)
-
         return self.layers(x)

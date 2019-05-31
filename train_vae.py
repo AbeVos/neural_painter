@@ -99,7 +99,7 @@ if __name__ == "__main__":
                         default='images_100k/', help="")
     parser.add_argument('--eval_interval', dest='eval_interval', type=int, default=50,
                         help="")
-    parser.add_argument('--model', dest='model', type=str, default='vae.pth',
+    parser.add_argument('--model', dest='model', type=str, default='painter.pth',
                         help="Name of the saved model.")
     args = parser.parse_args()
 
