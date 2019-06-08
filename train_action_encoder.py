@@ -7,25 +7,47 @@ import matplotlib.pyplot as plt
 
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
-from models import ActionEncoder, VAE
+from architectures.painters import ActionEncoder, VAEPainter
 from dataset.dataset import BrushStrokeDataset
 from dataset.transform import ToTensor
 
 
+def create_images(alpha, color, device='cpu'):
+    channels = torch.ones((len(color), 3, 64, 64)).to(device)
+    channels *= color[..., None, None]
+
+    return torch.cat((channels, alpha), dim=1)
+
+
+def blend(src, dst):
+    dst = dst[:, :3]
+    alpha = src[:, -1].unsqueeze(1)
+    src = src[:, :3]
+
+    return alpha * src + (1 - alpha) * dst
+
+
 def save_recon_plot(original, reconstructed, painted, filename):
-    original = make_grid(original[:5, :-1], nrow=5)
-    reconstructed = make_grid(reconstructed[:5, :-1], nrow=5)
-    painted = make_grid(painted[:5, :-1], nrow=5)
+    background = torch.ones((len(original), 3, 64, 64))
+    original = blend(original, background)
+    reconstructed = blend(reconstructed, background)
+    painted = blend(painted, background)
+
+    original = make_grid(original, nrow=8)
+    reconstructed = make_grid(reconstructed, nrow=8)
+    painted = make_grid(painted, nrow=8)
 
     plt.figure()
     plt.subplot(311)
     plt.title("Original")
     plt.imshow(original.permute(1, 2, 0).cpu().detach())
     plt.axis('off')
+
     plt.subplot(312)
     plt.title("Reconstruction")
     plt.imshow(reconstructed.permute(1, 2, 0).cpu().detach())
     plt.axis('off')
+
     plt.subplot(313)
     plt.title("Neural Painter")
     plt.imshow(painted.permute(1, 2, 0).cpu().detach())
@@ -35,7 +57,7 @@ def save_recon_plot(original, reconstructed, painted, filename):
 
 
 def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
-          batch_size=128):
+          batch_size=64):
     criterion = nn.MSELoss()
 
     mean_loss = []
@@ -48,8 +70,10 @@ def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
             images, params = batch['image'], batch['parameters']
             images = images.to(device).float()
             params = params.to(device).float()
+            color = params[:, 6:9]
+            params = torch.cat((params[:, :6], params[:, 9:]), dim=1)
 
-            code, _ = vae.encoder(images)
+            code, _ = vae.encoder(images[:, -1].unsqueeze(1))
             code = code.detach()
             pred = model(params)
 
@@ -66,11 +90,16 @@ def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
 
                 print(f"Epoch {epoch+1}: loss: {mean_loss}")
 
-                recon = vae.decoder(code)
-                pred = vae.decoder(pred)
+                images = images[:8].detach().cpu()
+
+                color = color.detach().cpu()[:8]
+                recon = create_images(
+                    torch.sigmoid(vae.decoder(code[:8])).detach().cpu(), color)
+                pred = create_images(
+                    torch.sigmoid(vae.decoder(pred[:8])).detach().cpu(), color)
 
                 save_recon_plot(
-                    images, recon, pred, f"samples/recon_{epoch+1:03d}.png")
+                    images, recon, pred, f"samples/recontructions.png")
 
                 mean_loss = []
 
@@ -81,10 +110,10 @@ if __name__ == "__main__":
         '--vae', dest='vae_model', type=str,
         help="Pretrained VAE model.")
     parser.add_argument(
-        '--action_dim', dest='action_dim', type=int, default=11,
+        '--action_dim', dest='action_dim', type=int, default=8,
         help="")
     parser.add_argument(
-        '--latent_dim', dest='latent_dim', type=int, default=32,
+        '--latent_dim', dest='latent_dim', type=int, default=8,
         help="")
     parser.add_argument(
         '--epochs', dest='epochs', type=int, default=100,
@@ -94,7 +123,7 @@ if __name__ == "__main__":
         '--eval_interval', type=int, default=100,
         help="")
     parser.add_argument(
-        '--data_root', dest='root', default='images_10k',
+        '--data_root', dest='root', default='images_100k',
         help="")
     parser.add_argument(
         '--device', dest='device', type=str, default='cuda:0',
@@ -104,9 +133,10 @@ if __name__ == "__main__":
     device = torch.device(args.device)
 
     dataset = BrushStrokeDataset(os.path.join(args.root, 'labels.csv'),
-                                 args.root, transform=ToTensor())
+                                 os.path.join(args.root, 'images/'),
+                                              transform=ToTensor())
 
-    vae = VAE(args.latent_dim, device).to(device)
+    vae = VAEPainter(args.latent_dim, device).to(device)
     vae.load_state_dict(torch.load(args.vae_model))
     vae.eval()
 

@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class Spline():
+class Bezier():
     def __init__(self, start, control, end):
         self.start = np.array(start)
         self.control = np.array(control)
@@ -10,6 +10,7 @@ class Spline():
         self.delta = 0.01
 
     def evaluate(self, t):
+        '''
         t -= self.delta / 2
         s = t + self.delta
         first_start = (1 - t) * self.start + t * self.control
@@ -29,3 +30,7 @@ class Spline():
         y = first_dir * (x - first_start[0]) + first_start[1]
 
         return np.array([x, y])
+        '''
+
+        return self.control + (1 - t) ** 2 * (self.start - self.control) \
+            + t ** 2 * (self.end - self.control)

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 from PIL import Image
 
-from spline import Spline
+from curves import Bezier
 
 
 def brush_gaussian(diameter):
@@ -82,7 +82,7 @@ def draw_alpha(dst, src, position):
 def draw_curve(dst, start, control, end, size_start, size_end,
                brush=brush_paint):
     """
-    Draw a spline curve unto a canvas.
+    Draw a Bezier curve unto a canvas.
     """
     def distance(p, q):
         """Euclidian distance between two points."""
@@ -97,14 +97,14 @@ def draw_curve(dst, start, control, end, size_start, size_end,
     size_start *= dst_size
     size_end *= dst_size
 
-    spline = Spline(start, control, end)
+    curve = Bezier(start, control, end)
     n = int(distance(start, control) + distance(control, end))
 
     for t in np.linspace(0, 1, n):
         size = (1 - t) * size_start + t * size_end
 
         noise = size / (0.5 * dst_size) * np.random.rand(2)
-        x, y = spline.evaluate(t) + noise
+        x, y = curve.evaluate(t) + noise
 
         draw_alpha(dst, brush(size), (int(round(x)), int(round(y))))
 
@@ -152,7 +152,7 @@ def generate_strokes(args):
         file.write(header)
 
         for idx, (stroke, parameters) in tqdm(enumerate(
-                stroke_generator(args.number, args.size))): 
+                stroke_generator(args.number, args.size)), total=args.number): 
             image_name = f"stroke_{idx:08d}.png"
             image_path = os.path.join(image_root, image_name)
 
