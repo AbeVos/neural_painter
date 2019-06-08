@@ -3,7 +3,6 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
-from tqdm import tqdm
 from scipy.stats import norm
 from PIL import Image
 
@@ -17,14 +16,33 @@ def brush_gaussian(diameter):
     to the 0.999-th percentile within `diameter`.
     """
     diameter = int(round(diameter))
-    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), diameter)
+    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), 2 * diameter)
 
     xx, yy = np.meshgrid(x, x)
-    normal = norm.pdf(xx, 0, 1) * norm.pdf(yy, 0, 1)
+    normal = norm.pdf(xx, 0, 0.5) * norm.pdf(yy, 0, 0.5)
 
-    normal /= normal.max()
+    # normal /= normal.max()
 
     return normal
+
+
+def brush_paint(diameter):
+    diameter = int(round(diameter))
+    n = 30
+    positions = np.random.randn(n, 2)
+    positions = np.clip(positions, norm.ppf(0.001), norm.ppf(0.999))
+    positions = positions / (2.5 * norm.ppf(0.999)) + 0.5
+    positions *= diameter
+    positions = positions.astype(int)
+    sizes = np.random.randint(diameter // 3, 2 * diameter // 3, n)
+
+    canvas = np.zeros((diameter, diameter))
+
+    for position, size in zip(positions, sizes):
+        dot = brush_gaussian(size)
+        draw_alpha(canvas, dot, position)
+
+    return canvas
 
 
 def draw_alpha(dst, src, position):
@@ -62,7 +80,7 @@ def draw_alpha(dst, src, position):
 
 
 def draw_curve(dst, start, control, end, size_start, size_end,
-               brush=brush_gaussian):
+               brush=brush_paint):
     """
     Draw a spline curve unto a canvas.
     """
@@ -138,7 +156,7 @@ def generate_strokes(args):
             image_name = f"stroke_{idx:08d}.png"
             image_path = os.path.join(image_root, image_name)
 
-            stroke = (256 * stroke).astype(np.uint8)
+            stroke = (255 * stroke).astype(np.uint8)
             image = Image.fromarray(stroke)
 
             positions, color, sizes = parameters
@@ -156,11 +174,20 @@ def test_strokes():
     """
     Generate 25 test strokes and plot them.
     """
-    for idx, (stroke, _) in tqdm(enumerate(stroke_generator(25)), total=25):
+    '''
+    for idx, (stroke, _) in enumerate(stroke_generator(25)):
         plt.subplot(5, 5, idx+1)
         plt.imshow(stroke)
         plt.axis('off')
 
+    plt.show()
+    '''
+
+    sizes = np.arange(10, 35)
+    for idx, size in enumerate(sizes):
+        plt.subplot(5, 5, idx + 1)
+        plt.imshow(1 - brush_paint(size), cmap='gray')
+        plt.axis('off')
     plt.show()
 
 
