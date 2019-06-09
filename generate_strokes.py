@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from scipy.stats import norm
+from tqdm import tqdm
 from PIL import Image
 
 from curves import Bezier
