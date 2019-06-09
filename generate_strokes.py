@@ -4,61 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-from scipy.stats import norm
 from PIL import Image
 
 from curves import Bezier
-
-
-def brush_gaussian(diameter):
-    """
-    Create a Gaussian alphamap of a given diameter.
-    The Gaussian's standard deviation is set to fit the curve from the 0.001-th
-    to the 0.999-th percentile within `diameter`.
-    """
-    diameter = int(round(diameter))
-    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), diameter)
-
-    xx, yy = np.meshgrid(x, x)
-    normal = norm.pdf(xx, 0, 1) * norm.pdf(yy, 0, 1)
-
-    normal /= normal.max()
-
-    return normal
-
-
-def draw_alpha(dst, src, position):
-    """
-    Draw a small alphamap onto a larger one.
-    The source alphamap can be offset if.
-    """
-    x, y = position
-    h, w = src.shape
-    H, W = dst.shape
-
-    x -= w // 2
-    y -= h // 2
-
-    # Correct src if it draws outside the dst borders.
-    if y < 0:
-        src = src[abs(y):]
-        y = 0
-    if x < 0:
-        src = src[:, abs(x):]
-        x = 0
-
-    h, w = src.shape
-
-    if H - (h + y) < 0:
-        src = src[:H - (h + y)]
-    if W - (w + x) < 0:
-        src = src[:, :W - (w + x)]
-
-    # Blend the source image with the patch of the destination image.
-    patch = dst[y:y+h, x:x+w]
-    patch = src + (1 - src) * patch
-
-    dst[y:y+h, x:x+w] = patch
 
 
 def draw_curve(dst, start, control, end, size_start, size_end,
