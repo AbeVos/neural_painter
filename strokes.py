@@ -1,7 +1,11 @@
+import os
+import argparse
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 
+from tqdm import tqdm
+from PIL import Image
 from scipy.stats import norm
 
 from curves import Bezier
@@ -11,7 +15,7 @@ STENCIL_SIZE = 64
 
 class Brush():
     def __init__(self, brush, stencil_size=STENCIL_SIZE, n_per_size=10):
-        self.min_size = stencil_size // 8
+        self.min_size = stencil_size // 10
         self.max_size = stencil_size // 2
         self.stencil_size = stencil_size
 
@@ -36,7 +40,7 @@ class Brush():
             (self.stencil_size * len(self._brush_dict),
              self.stencil_size * n))
 
-        for idx, size in enumerate(range(self.min_size, self.max_size), 2):
+        for idx, size in enumerate(range(self.min_size, self.max_size + 1)):
             for jdx in range(n):
                 alpha = self._brush_dict[size][jdx]
                 patch = np.zeros((self.stencil_size, self.stencil_size))
@@ -130,6 +134,14 @@ def brush_paint(diameter):
     return canvas
 
 
+def brush_calligraphy(diameter, angle=0.5):
+    diameter = int(round(diameter))
+
+    canvas = np.zeros((diameter, diameter))
+
+    pass
+
+
 def draw_alpha(dst, src, position):
     """
     Draw a small alphamap onto a larger one.
@@ -164,9 +176,41 @@ def draw_alpha(dst, src, position):
     dst[y:y+h, x:x+w] = patch
 
 
-if __name__ == "__main__":
+def generate_dataset(csv_file, directory, brush, n):
+    label = "{};{};{};{};{};{};{};{};{};{};{};{}\n"
+    header = label.format('image', 'start_x', 'start_y', 'ctrl_x',
+                          'ctrl_y', 'end_x', 'end_y', 'size_start',
+                          'size_end', 'red', 'green', 'blue')
+
+    csv_file.write(header)
+
+    for idx in tqdm(range(n)):
+        image_name = f'{idx:07d}.png'
+        image_path = os.path.join(directory, 'images', image_name)
+
+        canvas = np.zeros((STENCIL_SIZE, STENCIL_SIZE, 3))
+        action = np.random.rand(8)
+        color = np.random.rand(3)
+        brush.draw_stroke(canvas, action, color)
+
+        canvas = (255 * canvas).astype(np.uint8)
+        image = Image.fromarray(canvas)
+        image.save(image_path)
+
+        action = (255 * action).astype(np.uint8)
+        color = (255 * color).astype(np.uint8)
+        csv_file.write(label.format(image_name, *action, *color))
+
+    csv_file.close()
+
+
+def test_strokes():
     print("Create brush")
     brush = Brush(brush_paint)
+
+    plt.figure()
+    brush.show_brush_dict()
+    plt.close()
 
     canvas = np.zeros((4 * STENCIL_SIZE, 4 * STENCIL_SIZE, 3))
 
@@ -187,6 +231,36 @@ if __name__ == "__main__":
 
         brush.draw_stroke(canvas, action, color, offset)
 
+    plt.figure()
     plt.imshow(canvas)
     plt.axis('off')
     plt.show()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-n', dest='number', type=int, default=1000,
+        help="The number of stroke images to create.")
+    parser.add_argument(
+        '-d', dest='directory', type=str, default='strokes',
+        help="")
+    parser.add_argument(
+        '-t', dest='test', action='store_true',
+        help="Display a number of strokes on a test image without saving.")
+    args = parser.parse_args()
+
+    if args.test:
+        test_strokes()
+    else:
+        brush = Brush(brush_paint)
+
+        os.makedirs(os.path.join(args.directory, 'images'), exist_ok=True)
+        csv_path = os.path.join(args.directory, 'labels.csv')
+        csv_file = open(csv_path, 'w')
+
+        try:
+            generate_dataset(csv_file, args.directory, brush, args.number)
+        except Exception as e:
+            csv_file.close()
+            raise e
