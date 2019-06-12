@@ -99,6 +99,36 @@ class Brush():
             + (1 - alphamap[..., None]) * canvas)
 
 
+def transform(image, A, resolution=64):
+    height, width = image.shape
+
+    x = np.linspace(-0.5, 0.5, resolution)
+    xx, yy = np.meshgrid(x, x)
+    sample_field = np.stack((xx, yy)).reshape(2, -1)
+    sample_field += 0.005 * np.random.randn(*sample_field.shape)
+
+    A = np.linalg.inv(A)
+    sample_field = A @ sample_field
+
+    sample_field += 0.5
+    sample_field = np.clip(sample_field, 0, 1)
+
+    sample_field *= height - 1
+
+    btm = np.floor(sample_field).astype(int)
+    top = np.ceil(sample_field).astype(int)
+
+    sample = np.stack((
+        image[top[1], btm[0]],
+        image[btm[1], btm[0]],
+        image[top[1], top[0]],
+        image[btm[1], top[0]])).mean(0)
+
+    sample = sample.reshape(resolution, resolution)
+
+    return sample
+
+
 def brush_gaussian(diameter):
     """
     Create a Gaussian alphamap of a given diameter.
@@ -134,12 +164,25 @@ def brush_paint(diameter):
     return canvas
 
 
-def brush_calligraphy(diameter, angle=0.5):
+def brush_calligraphy(diameter, angle=0.25):
+    """
+    Sample from a calligraphy brush.
+    """
     diameter = int(round(diameter))
 
-    canvas = np.zeros((diameter, diameter))
+    image = np.zeros((64, 64))
+    image[24:40, 4:60] = 1
 
-    pass
+    theta = (0.05 * np.random.randn(1)[0] + angle) * np.pi
+    A = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+
+    # Apply the transformation multiple times to get a smoothing effect.
+    image = transform(image, A, resolution=diameter)
+    image = transform(image, np.linalg.inv(A), resolution=diameter)
+    image = transform(image, A, resolution=diameter)
+
+    return image
 
 
 def draw_alpha(dst, src, position):
@@ -206,7 +249,7 @@ def generate_dataset(csv_file, directory, brush, n):
 
 def test_strokes():
     print("Create brush")
-    brush = Brush(brush_paint)
+    brush = Brush(brush_calligraphy)
 
     plt.figure()
     brush.show_brush_dict()
@@ -221,15 +264,12 @@ def test_strokes():
     canvas[::STENCIL_SIZE, :, :] = 1
 
     print("Draw strokes")
-    for offset in [
-            (STENCIL_SIZE, STENCIL_SIZE),
-            (STENCIL_SIZE, 2 * STENCIL_SIZE),
-            (2 * STENCIL_SIZE, STENCIL_SIZE),
-            (2 * STENCIL_SIZE, 2 * STENCIL_SIZE)]:
-        action = np.random.rand(8)
-        color = np.random.rand(3)
+    for x in range(0, 256, 64):
+        for y in range(0, 256, 64):
+            action = np.random.rand(8)
+            color = np.random.rand(3)
 
-        brush.draw_stroke(canvas, action, color, offset)
+            brush.draw_stroke(canvas, action, color, (x, y))
 
     plt.figure()
     plt.imshow(canvas)
