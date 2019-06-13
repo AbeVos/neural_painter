@@ -100,13 +100,24 @@ class Brush():
 
 
 def transform(image, A, resolution=64):
+    """
+    Transform an image using a sample field.
+
+    A grid of sampling points is placed over the image uniformly (the
+    number of points is determined by `resolution`).
+    These points are transformed using the matrix `A` after which the
+    average value under each point is sampled.
+    These sampled are then reshaped into the transformed image.
+    """
     height, width = image.shape
 
+    # Create the sample field.
     x = np.linspace(-0.5, 0.5, resolution)
     xx, yy = np.meshgrid(x, x)
     sample_field = np.stack((xx, yy)).reshape(2, -1)
     sample_field += 0.005 * np.random.randn(*sample_field.shape)
 
+    # Transform the sample coordinates.
     A = np.linalg.inv(A)
     sample_field = A @ sample_field
 
@@ -115,6 +126,7 @@ def transform(image, A, resolution=64):
 
     sample_field *= height - 1
 
+    # Sample the image.
     btm = np.floor(sample_field).astype(int)
     top = np.ceil(sample_field).astype(int)
 
@@ -145,9 +157,16 @@ def brush_gaussian(diameter):
 
 
 def brush_paint(diameter):
+    """
+    Sample from a paint brush.
+
+    The paint brush consists of a number of gaussian brushes normally
+    distributed over the canvas.
+    """
     diameter = int(round(diameter))
     n = 20
 
+    # Select the positions for the subbrushes.
     positions = np.random.randn(n, 2)
     positions = np.clip(positions, norm.ppf(0.001), norm.ppf(0.999))
     positions = positions / (2.5 * norm.ppf(0.999)) + 0.5
@@ -293,7 +312,7 @@ if __name__ == "__main__":
     if args.test:
         test_strokes()
     else:
-        brush = Brush(brush_paint)
+        brush = Brush(brush_calligraphy)
 
         os.makedirs(os.path.join(args.directory, 'images'), exist_ok=True)
         csv_path = os.path.join(args.directory, 'labels.csv')

@@ -21,7 +21,7 @@ class BrushStrokeDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return len(self.stroke_params['index'])
+        return len(self.stroke_params['image'])
 
     def __getitem__(self, idx):
         # Load image.
@@ -81,7 +81,7 @@ def show_data(n_images, nrow=5):
 
 if __name__ == "__main__":
     dataset = BrushStrokeDataset(
-        'labels.csv', 'images/',
+        'calligraphy_100k/labels.csv', 'calligraphy_100k/images/',
         transform=transforms.Compose([
             ToTensor()
         ]))

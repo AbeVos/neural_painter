@@ -1,9 +1,10 @@
 import argparse
 import torch
+import torch.optim as optim
 
 from dataset.dataset import BrushStrokeDataset
 from dataset.transform import ToTensor
-from models import StrokeGenerator, StrokeDiscriminator
+from architectures.gan import Generator, Discriminator
 
 
 if __name__ == "__main__":
@@ -29,10 +30,11 @@ if __name__ == "__main__":
 
     dataset = BrushStrokeDataset('labels.csv', 'images/', transform=ToTensor())
 
-    generator = StrokeGenerator(args.action_dim, device)
-    discriminator = StrokeDiscriminator(args.action_dim)
+    generator = Generator(args.action_dim, device)
+    discriminator = Discriminator(args.action_dim)
 
-    optimizer = optim.Adam(model.parameters(), lr=3e-4)
+    optim_G = optim.Adam(generator.parameters(), lr=3e-4)
+    optim_D = optim.Adam(discriminator.parameters(), lr=3e-4)
 
     train(dataset, model, optimizer, device, args.epochs, args.batch_size,
           args.eval_interval)

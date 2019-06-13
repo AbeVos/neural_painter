@@ -61,7 +61,7 @@ def train(dataset, model, optimizer, device, num_epochs=100,
             elbo.backward()
             optimizer.step()
             optimizer.zero_grad()
-            
+
             elbo_agg += elbo.item()
 
             if idx % eval_interval == 0 and idx > 0:
