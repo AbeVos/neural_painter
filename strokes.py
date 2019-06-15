@@ -253,7 +253,11 @@ def generate_dataset(csv_file, directory, brush, n):
         canvas = np.zeros((STENCIL_SIZE, STENCIL_SIZE, 3))
         action = np.random.rand(8)
         color = np.random.rand(3)
-        brush.draw_stroke(canvas, action, color)
+        brush.draw_stroke(canvas, action, np.ones(3))
+        alpha = canvas.mean(-1)[..., None]
+        canvas = np.ones((STENCIL_SIZE, STENCIL_SIZE, 3)) \
+                * color[None, None, :]
+        canvas = np.concatenate((canvas, alpha), axis=-1)
 
         canvas = (255 * canvas).astype(np.uint8)
         image = Image.fromarray(canvas)
@@ -277,8 +281,8 @@ def test_strokes():
     canvas = np.zeros((4 * STENCIL_SIZE, 4 * STENCIL_SIZE, 3))
 
     # Draw a simple grid.
-    canvas[:, ::STENCIL_SIZE // 2, :] = 0.25
-    canvas[::STENCIL_SIZE // 2, :, :] = 0.25
+    canvas[:, ::STENCIL_SIZE // 2, :] = 0.5
+    canvas[::STENCIL_SIZE // 2, :, :] = 0.5
     canvas[:, ::STENCIL_SIZE, :] = 1
     canvas[::STENCIL_SIZE, :, :] = 1
 

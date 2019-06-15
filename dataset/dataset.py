@@ -30,7 +30,7 @@ class BrushStrokeDataset(Dataset):
         image = misc.imread(image_name)
 
         # Load stroke parameters.
-        param_keys = [key for key in list(self.stroke_params.keys())[2:]]
+        param_keys = [key for key in list(self.stroke_params.keys())[1:]]
         params = np.array(
             [self.stroke_params[key][idx] for key in param_keys], np.uint8)
         params = params.astype(float).T

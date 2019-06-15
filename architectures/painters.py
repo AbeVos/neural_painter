@@ -22,7 +22,7 @@ class VAEPainter(VAE):
         return super(VAEPainter, self).forward(alpha)
 
     def sample(self, n_samples, z):
-        # TODO: Sample alpha map and combine with random color.
+        # Sample alpha map and combine with random color.
 
         if z is None:
             z = torch.randn((n_samples, self.latent_dim)).to(self.device)

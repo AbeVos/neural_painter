@@ -98,15 +98,19 @@ class Decoder(nn.Module):
         self.layers = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 1024, 4, stride=2),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(1024),
 
             Upsample(2, 1024, 512),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(512),
 
             Upsample(2, 512, 256), 
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(256),
 
             Upsample(2, 256, 128), 
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(128),
 
             Upsample(2, 128, color_channels), 
         )
@@ -114,7 +118,8 @@ class Decoder(nn.Module):
     def forward(self, z):
         z = z.view(len(z), self.latent_dim, 1, 1)
 
-        return self.layers(z)
+        x = self.layers(z)
+        return x
 
 
 class VAE(nn.Module):

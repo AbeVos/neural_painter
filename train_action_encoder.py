@@ -19,6 +19,14 @@ def create_images(alpha, color, device='cpu'):
     return torch.cat((channels, alpha), dim=1)
 
 
+def create_background(n, base=1):
+    background = torch.ones((n, 3, 64, 64)) * base
+    background[..., ::16, :] = 0.5
+    background[..., ::16] = 0.5
+
+    return background
+
+
 def blend(src, dst):
     dst = dst[:, :3]
     alpha = src[:, -1].unsqueeze(1)
@@ -28,7 +36,7 @@ def blend(src, dst):
 
 
 def save_recon_plot(original, reconstructed, painted, filename):
-    background = torch.ones((len(original), 3, 64, 64))
+    background = create_background(len(original))
     original = blend(original, background)
     reconstructed = blend(reconstructed, background)
     painted = blend(painted, background)
@@ -70,8 +78,8 @@ def train(dataset, vae, model, optimizer, device='cuda:0', epochs=100,
             images, params = batch['image'], batch['parameters']
             images = images.to(device).float()
             params = params.to(device).float()
-            color = params[:, 6:9]
-            params = torch.cat((params[:, :6], params[:, 9:]), dim=1)
+            color = params[:, -3:]
+            params = params[:, :-3]
 
             code, _ = vae.encoder(images[:, -1].unsqueeze(1))
             code = code.detach()
