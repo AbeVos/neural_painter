@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as functional
+
+from math import log10
 
 
 class Interpolate(nn.Module):
@@ -152,7 +155,11 @@ class VAE(nn.Module):
         recon_loss = self.recon_loss(recon, image) / len(image)
         elbo = recon_loss + self.beta * D_kl
 
-        return elbo
+        psnr = 10 * log10(
+            1 / functional.mse_loss(torch.sigmoid(recon), image)
+        )
+
+        return elbo, psnr
 
     def sample(self, n_samples, z=None):
         if z is None:

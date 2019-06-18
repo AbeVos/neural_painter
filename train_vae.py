@@ -13,14 +13,21 @@ from dataset.dataset import BrushStrokeDataset
 from dataset.transform import ToTensor
 
 
-def save_elbo_plot(elbo, filename):
+def save_elbo_plot(elbo, psnr, filename):
     """
     Save an image of the ELBO plot.
     """
     plt.figure()
+    plt.subplot(121)
     plt.plot(elbo)
     plt.xlabel("Step")
     plt.ylabel("ELBO")
+
+    plt.subplot(122)
+    plt.plot(psnr)
+    plt.ylabel("PSNR")
+
+    plt.tight_layout()
     plt.savefig(filename)
     plt.close()
 
@@ -51,6 +58,7 @@ def create_background(n, base=1):
 def train(dataset, model, optimizer, device, num_epochs=100,
           batch_size=128, eval_interval=10):
     elbo_plot = []
+    psnr_plot = []
     z = None
 
     for epoch in range(num_epochs):
@@ -58,6 +66,7 @@ def train(dataset, model, optimizer, device, num_epochs=100,
             dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 
         elbo_agg = 0
+        psnr_agg = 0
 
         for idx, batch in enumerate(dataloader):
             model.train()
@@ -65,23 +74,27 @@ def train(dataset, model, optimizer, device, num_epochs=100,
             images = batch['image']
             images = images.to(device).float()
 
-            elbo = model(images)
+            elbo, psnr = model(images)
 
             elbo.backward()
             optimizer.step()
             optimizer.zero_grad()
 
             elbo_agg += elbo.item()
+            psnr_agg += psnr
 
             if idx % eval_interval == 0 and idx > 0:
                 mean_elbo = elbo_agg / eval_interval
+                mean_psnr = psnr_agg / eval_interval
                 elbo_agg = 0
+                psnr_agg = 0
                 elbo_plot.append(mean_elbo)
+                psnr_plot.append(mean_psnr)
 
                 print(f"Epoch {epoch+1:03d}, batch {idx:05d} | "
-                      f"ELBO: {mean_elbo}")
+                      f"ELBO: {mean_elbo:.6f} | PSNR: {mean_psnr:.6f}")
 
-                save_elbo_plot(elbo_plot, "elbo.png")
+                save_elbo_plot(elbo_plot, psnr_plot, "elbo.png")
 
                 model.eval()
                 samples, z = model.sample(64, z)
