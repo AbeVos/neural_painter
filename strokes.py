@@ -83,7 +83,9 @@ class Brush():
         alphamap = np.zeros_like(canvas[..., 0])
 
         # Draw alphamap.
-        for t in np.linspace(0, 1, int(curve.length)):
+        n = 64 * int(curve.length) / STENCIL_SIZE
+
+        for t in np.linspace(0, 1, n):
             position = curve.evaluate(t).astype(int)
             size = (1 - t) * start_size + t * end_size
             size = (1 - size) * self.min_size + size * self.max_size
@@ -99,7 +101,7 @@ class Brush():
             + (1 - alphamap[..., None]) * canvas)
 
 
-def transform(image, A, resolution=64):
+def transform(image, A, resolution):
     """
     Transform an image using a sample field.
 
@@ -189,7 +191,7 @@ def brush_calligraphy(diameter, angle=0.25):
     """
     diameter = int(round(diameter))
 
-    image = np.zeros((64, 64))
+    image = np.zeros((STENCIL_SIZE, STENCIL_SIZE))
     image[24:40, 4:60] = 1
 
     theta = (0.05 * np.random.randn(1)[0] + angle) * np.pi
@@ -287,8 +289,9 @@ def test_strokes():
     canvas[::STENCIL_SIZE, :, :] = 1
 
     print("Draw strokes")
-    for x in range(0, 256, 64):
-        for y in range(0, 256, 64):
+    for x in range(0, 4 * STENCIL_SIZE, STENCIL_SIZE):
+        for y in range(0, 4 * STENCIL_SIZE, STENCIL_SIZE):
+            print(x, y)
             action = np.random.rand(8)
             color = np.random.rand(3)
 
