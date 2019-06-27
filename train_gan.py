@@ -7,6 +7,17 @@ from dataset.transform import ToTensor
 from architectures.gan import Generator, Discriminator
 
 
+def iter_epoch(models, optimizers, dataset, batch_size):
+    G, D = models
+    optim_G, optim_D = optimizers
+
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True,
+                            num_workers=4)
+
+    for batch in dataloader:
+        images = batch['image']
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
