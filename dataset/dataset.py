@@ -16,18 +16,20 @@ except ModuleNotFoundError:
 
 class BrushStrokeDataset(Dataset):
     def __init__(self, csv_file, root_dir, transform=None):
-        self.stroke_params = read_csv(csv_file)
+        self.stroke_params = read_csv(os.path.join(root_dir, csv_file))
         self.root_dir = root_dir
         self.transform = transform
+
+        self.action_dim = len(self.stroke_params.keys()) - 1
 
     def __len__(self):
         return len(self.stroke_params['image'])
 
     def __getitem__(self, idx):
         # Load image.
-        image_name = os.path.join(
-            self.root_dir, self.stroke_params['image'][idx])
-        image = misc.imread(image_name)
+        image_path = os.path.join(
+            self.root_dir, 'images', self.stroke_params['image'][idx])
+        image = misc.imread(image_path)
 
         # Load stroke parameters.
         param_keys = [key for key in list(self.stroke_params.keys())[1:]]
@@ -35,7 +37,7 @@ class BrushStrokeDataset(Dataset):
             [self.stroke_params[key][idx] for key in param_keys], np.uint8)
         params = params.astype(float).T
 
-        sample = {'image': image, 'parameters': params}
+        sample = {'image': image, 'action': params}
 
         # Transform sample.
         if self.transform:
