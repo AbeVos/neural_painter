@@ -33,11 +33,11 @@ class BrushStrokeDataset(Dataset):
 
         # Load stroke parameters.
         param_keys = [key for key in list(self.stroke_params.keys())[1:]]
-        params = np.array(
+        action = np.array(
             [self.stroke_params[key][idx] for key in param_keys], np.uint8)
-        params = params.astype(float).T
+        action = action.astype(float).T
 
-        sample = {'image': image, 'action': params}
+        sample = {'image': image, 'action': action}
 
         # Transform sample.
         if self.transform:
