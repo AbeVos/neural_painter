@@ -5,8 +5,10 @@ import torchvision.transforms as transforms
 
 from PIL import Image
 from torchvision.utils import save_image
+from torchvision.models import vgg16
 
 from architectures.vae import VAE
+
 
 def load_image(path, img_size):
     transform = transforms.Compose([
@@ -63,22 +65,17 @@ if __name__ == "__main__":
     img_size = 512
     device = torch.device('cuda:0')
 
-    vae = VAE(latent_dim=512, device=device)
-    vae.load_state_dict(torch.load("models/content_net.pth"))
-    vae = vae.eval()
-    model = vae.encoder.layers
+    # vae = VAE(latent_dim=512, device=device)
+    # vae.load_state_dict(torch.load("models/content_net.pth"))
+    # vae = vae.eval()
+    # model = vae.encoder.layers
+    model = vgg16(pretrained=True).features
+    model = model.to(device)
+    print(model)
 
-    for layer in model:
-        if isinstance(layer, nn.Conv2d):
-            weights = layer.weight.data
-
-            save_image(weights, "content_weights_layer1.png", nrow=16,
-                       normalize=True)
-            
-            break
-
-    style_weight = [5, 4, 1]
-    style_models = [model[:1], model[:3], model[:5]]
+    style_weight = [1, 1, 1, 1, 1]
+    style_weight = [weight / sum(style_weight) for weight in style_weight]
+    style_models = [model[:1], model[:3], model[:6], model[:8], model[:11]]
     content_model = model
 
     style_img = load_image('images/vangogh.png', img_size).to(device)
@@ -88,12 +85,12 @@ if __name__ == "__main__":
     content_loss = ContentLoss(content_model, content_img)
     
     # Mix the content image with some noise to get a begin state.
-    alpha = 0.5
+    alpha = 0.0
     image = alpha * content_img.clone() \
          + (1 - alpha) * torch.rand(1, 3, img_size, img_size).to(device)
     optimizer = optim.LBFGS([image.requires_grad_()])
 
-    for step in range(10):
+    for step in range(50):
         def closure():
             optimizer.zero_grad()
             image.data.clamp_(0, 1)
@@ -101,7 +98,7 @@ if __name__ == "__main__":
             style = [weight * loss(image) for weight, loss
                      in zip(style_weight, style_loss)]
             style = torch.stack(style).sum()
-            loss = style + 1e-5 * content_loss(image)
+            loss = style + content_loss(image)
 
             loss.backward()
 
