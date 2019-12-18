@@ -28,15 +28,17 @@ class Upsample(nn.Module):
     Replaces the ConvTranspose2d layer by upsampling the image and
     applying a regular Conv2d layer to it.
     """
-    def __init__(self, scale_factor, channels_in, channels_out):
+    def __init__(self, scale_factor, channels_in, channels_out, bias=False):
         super(Upsample, self).__init__()
 
         self.layers = nn.Sequential(
             Interpolate(scale_factor, mode='bilinear', align_corners=False),
             nn.ReflectionPad2d(2),
-            nn.Conv2d(channels_in, channels_out, 3, stride=1, padding=0),
+            nn.Conv2d(channels_in, channels_out, 3, stride=1, padding=0,
+                      bias=bias),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(channels_out, channels_out, 3, stride=1, padding=0),
+            nn.Conv2d(channels_out, channels_out, 3, stride=1, padding=0,
+                      bias=bias),
         )
 
     def forward(self, x):

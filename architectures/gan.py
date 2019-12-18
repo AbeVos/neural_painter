@@ -9,7 +9,7 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
 
         self.layers = nn.Sequential(
-            nn.ConvTranspose2d(action_dim, 1024, 2, stride=1),
+            nn.ConvTranspose2d(action_dim, 1024, 2, stride=1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(1024),
 
