@@ -143,17 +143,25 @@ def generate_strokes(args):
     label_path = os.path.join(args.output_root, 'labels.csv')
     image_root = os.path.join(args.output_root, 'images')
 
+    # Create data directory and prepare headers for the label file.
     os.makedirs(image_root, exist_ok=True)
     label = "{};{};{};{};{};{};{};{};{};{};{};{};{}\n"
-    header = label.format('index', 'image', 'start_x', 'start_y', 'ctrl_x',
-                          'ctrl_y', 'end_x', 'end_y', 'red', 'green', 'blue',
-                          'size_start', 'size_end')
+    header = label.format(
+        'index', 'image',
+        'start_x', 'start_y',
+        'ctrl_x', 'ctrl_y',
+        'end_x', 'end_y',
+        'red', 'green', 'blue',
+        'size_start', 'size_end'
+    )
 
     with open(label_path, 'w') as file:
         file.write(header)
 
-        for idx, (stroke, parameters) in tqdm(enumerate(
-                stroke_generator(args.number, args.size)), total=args.number): 
+        generator = stroke_generator(args.number, args.size)
+
+        for idx, (stroke, parameters) in tqdm(
+                enumerate(generator), total=args.number):
             image_name = f"stroke_{idx:08d}.png"
             image_path = os.path.join(image_root, image_name)
 
@@ -175,21 +183,22 @@ def test_strokes():
     """
     Generate 25 test strokes and plot them.
     """
-    '''
     for idx, (stroke, _) in enumerate(stroke_generator(25)):
         plt.subplot(5, 5, idx+1)
         plt.imshow(stroke)
         plt.axis('off')
 
     plt.show()
-    '''
 
+    '''
+    plt.figure()
     sizes = np.arange(10, 35)
     for idx, size in enumerate(sizes):
         plt.subplot(5, 5, idx + 1)
-        plt.imshow(1 - brush_paint(size), cmap='gray')
+        plt.imshow(brush_paint(size), cmap='gray')
         plt.axis('off')
     plt.show()
+    '''
 
 
 if __name__ == "__main__":
@@ -199,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', dest='size', type=int, default=64,
                         help="Size of the images.")
     parser.add_argument('-o', dest='output_root', type=str, default='strokes/',
-                        help="DIrectory to write the data to.")
+                        help="Directory to write the data to.")
     parser.add_argument('-t', dest='test', action='store_true',
                         help="Draw a number of test strokes and exit.")
     args = parser.parse_args()
