@@ -7,14 +7,26 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from PIL import Image
 from scipy.stats import norm
-
-from curves import Bezier
+from bezier.curve import Curve
 
 STENCIL_SIZE = 64
 
 
 class Brush():
-    def __init__(self, brush, stencil_size=STENCIL_SIZE, n_per_size=10):
+    def __init__(self, brush, stencil_size, n_per_size=10):
+        """
+        A Brush object is used for drawing strokes to a canvas.
+
+        Parameters
+        ----------
+        brush: function
+            Function for generating an alphamap of a given size.
+        stencil_size: int
+            Size of the stencil to draw to.
+        n_per_size: int, default 10
+            Number of brush samples to store in the dictionary per
+            brush diameter.
+        """
         self.min_size = max(3, stencil_size // 10)
         self.max_size = stencil_size // 2
         self.stencil_size = stencil_size
@@ -27,7 +39,6 @@ class Brush():
         Generate a number of brush alpha's for different brush sizes.
         """
         brush_dict = {}
-        print(min_size, max_size)
         for size in range(min_size, max_size + 1):
             brush_dict[size] = [brush(size) for _ in range(n)]
 
@@ -84,15 +95,16 @@ class Brush():
         start, ctrl, end = positions
         start_size, end_size = action[6:]
 
-        curve = Bezier(start, ctrl, end)
+        # curve = Bezier(start, ctrl, end)
+        curve = Curve.from_nodes(positions.T)
         alphamap = np.zeros_like(canvas[..., 0])
 
-        # Draw alphamap.
-        # n = 64 * int(curve.length) // self.stencil_size
+        # Base the number of drawing steps on the length of the curve.
         n = int(curve.length)
 
+        # Draw alphamap.
         for t in np.linspace(0, 1, n):
-            position = curve.evaluate(t).astype(int)
+            position = curve.evaluate(t).squeeze().astype(int)
             size = (1 - t) * start_size + t * end_size
             size = (1 - size) * self.min_size + size * self.max_size
             size = int(round(size))
@@ -109,46 +121,52 @@ class Brush():
         )
 
 
-def brush_gaussian(size):
+def brush_gaussian():
     """
     Create a Gaussian alphamap of a given diameter.
     The Gaussian's standard deviation is set to fit the curve from
     the 0.001-th to the 0.999-th percentile within `diameter`.
     """
-    size = int(round(size))
+    def inner(size):
+        size = int(round(size))
 
-    # Make sure to cover 99.8% of the area under the curve.
-    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), size)
+        # Make sure to cover 99.8% of the area under the curve.
+        x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), size)
 
-    xx, yy = np.meshgrid(x, x)
-    normal = norm.pdf(xx, 0, 0.5) * norm.pdf(yy, 0, 0.5)
+        xx, yy = np.meshgrid(x, x)
+        normal = norm.pdf(xx, 0, 0.5) * norm.pdf(yy, 0, 0.5)
 
-    return normal
+        return normal
+
+    return inner
 
 
-def brush_blobs(diameter):
+def brush_blobs():
     """
     Sample a blob brush consisting of a combination of Gaussian
     brushes.
     """
-    diameter = int(round(diameter))
-    n = 20
+    def inner(diameter):
+        diameter = int(round(diameter))
+        n = 20
 
-    # Select the positions for the subbrushes.
-    positions = np.random.randn(n, 2)
-    positions = np.clip(positions, norm.ppf(0.001), norm.ppf(0.999))
-    positions = positions / (2.5 * norm.ppf(0.999)) + 0.5
-    positions = (positions * diameter).astype(int)
+        # Select the positions for the subbrushes.
+        positions = np.random.randn(n, 2)
+        positions = np.clip(positions, norm.ppf(0.001), norm.ppf(0.999))
+        positions = positions / (2.5 * norm.ppf(0.999)) + 0.5
+        positions = (positions * diameter).astype(int)
 
-    sizes = np.random.randint(diameter // 3, 2 * diameter // 3, n)
+        sizes = np.random.randint(diameter // 3, 2 * diameter // 3, n)
 
-    canvas = np.zeros((diameter, diameter))
+        canvas = np.zeros((diameter, diameter))
 
-    for position, size in zip(positions, sizes):
-        dot = brush_gaussian(size)
-        draw_alpha(canvas, dot, position)
+        for position, size in zip(positions, sizes):
+            dot = brush_gaussian(size)
+            draw_alpha(canvas, dot, position)
 
-    return canvas
+        return canvas
+
+    return inner
 
 
 def brush_calligraphy(angle=0.25):
@@ -251,7 +269,7 @@ def draw_alpha(dst, src, position):
     dst[y:y+h, x:x+w] = patch
 
 
-def generate_dataset(csv_file, directory, brush, n, args):
+def generate_dataset(csv_file, directory, brush, args):
     label = "{};{};{};{};{};{};{};{};{};{};{};{}\n"
     header = label.format(
         'image',
@@ -307,7 +325,6 @@ def test_strokes(args):
     print("Draw strokes")
     for x in range(0, 4 * args.size, args.size):
         for y in range(0, 4 * args.size, args.size):
-            print(x, y)
             action = np.random.rand(8)
             color = np.random.rand(3)
 
