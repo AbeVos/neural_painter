@@ -83,7 +83,7 @@ class Brush():
         alphamap = np.zeros_like(canvas[..., 0])
 
         # Draw alphamap.
-        n = 64 * int(curve.length) / STENCIL_SIZE
+        n = 64 * int(curve.length) // STENCIL_SIZE
 
         for t in np.linspace(0, 1, n):
             position = curve.evaluate(t).astype(int)
@@ -242,9 +242,12 @@ def draw_alpha(dst, src, position):
 
 def generate_dataset(csv_file, directory, brush, n):
     label = "{};{};{};{};{};{};{};{};{};{};{};{}\n"
-    header = label.format('image', 'start_x', 'start_y', 'ctrl_x',
-                          'ctrl_y', 'end_x', 'end_y', 'size_start',
-                          'size_end', 'red', 'green', 'blue')
+    header = label.format(
+        'image',
+        'start_x', 'start_y', 'ctrl_x', 'ctrl_y', 'end_x', 'end_y',
+        'size_start', 'size_end',
+        'red', 'green', 'blue'
+    )
 
     csv_file.write(header)
 
@@ -258,7 +261,7 @@ def generate_dataset(csv_file, directory, brush, n):
         brush.draw_stroke(canvas, action, np.ones(3))
         alpha = canvas.mean(-1)[..., None]
         canvas = np.ones((STENCIL_SIZE, STENCIL_SIZE, 3)) \
-                * color[None, None, :]
+            * color[None, None, :]
         canvas = np.concatenate((canvas, alpha), axis=-1)
 
         canvas = (255 * canvas).astype(np.uint8)
