@@ -15,7 +15,7 @@ STENCIL_SIZE = 64
 
 class Brush():
     def __init__(self, brush, stencil_size=STENCIL_SIZE, n_per_size=10):
-        self.min_size = stencil_size // 10
+        self.min_size = max(3, stencil_size // 10)
         self.max_size = stencil_size // 2
         self.stencil_size = stencil_size
 
@@ -27,13 +27,14 @@ class Brush():
         Generate a number of brush alpha's for different brush sizes.
         """
         brush_dict = {}
+        print(min_size, max_size)
         for size in range(min_size, max_size + 1):
             brush_dict[size] = [brush(size) for _ in range(n)]
 
         return brush_dict
 
     def show_brush_dict(self, n=5):
-        if n is 0:
+        if n == 0:
             n = len(self._brush_dict[self.min_size])
 
         canvas = np.zeros(
@@ -45,10 +46,14 @@ class Brush():
                 alpha = self._brush_dict[size][jdx]
                 patch = np.zeros((self.stencil_size, self.stencil_size))
                 draw_alpha(
-                    patch, alpha, (self.stencil_size // 2, self.stencil_size // 2))
+                    patch, alpha,
+                    (self.stencil_size // 2, self.stencil_size // 2)
+                )
 
-                canvas[self.stencil_size*idx:self.stencil_size*(idx+1),
-                       self.stencil_size*jdx:self.stencil_size*(jdx+1)] = patch
+                canvas[
+                    self.stencil_size * idx:self.stencil_size * (idx+1),
+                    self.stencil_size * jdx:self.stencil_size * (jdx+1)
+                ] = patch
 
         plt.imshow(canvas)
         plt.axis('off')
@@ -70,7 +75,7 @@ class Brush():
         action : list of float
             A list of values describing the stroke's control points and
             sizes.
-            Action values lie in the range [0, 1].
+            Action values lie in the range (0, 1).
         color : tuple of float,
         offset : tuple of float
         """
@@ -83,7 +88,8 @@ class Brush():
         alphamap = np.zeros_like(canvas[..., 0])
 
         # Draw alphamap.
-        n = 64 * int(curve.length) // STENCIL_SIZE
+        # n = 64 * int(curve.length) // self.stencil_size
+        n = int(curve.length)
 
         for t in np.linspace(0, 1, n):
             position = curve.evaluate(t).astype(int)
@@ -96,9 +102,77 @@ class Brush():
             draw_alpha(alphamap, alpha, position)
 
         # Draw color to the canvas based on the generated alphamap.
-        canvas = np.copyto(canvas,
-            alphamap[..., None] * color[None, None, :] \
-            + (1 - alphamap[..., None]) * canvas)
+        canvas = np.copyto(
+            canvas,
+            alphamap[..., None] * color[None, None, :]
+            + (1 - alphamap[..., None]) * canvas
+        )
+
+
+def brush_gaussian(size):
+    """
+    Create a Gaussian alphamap of a given diameter.
+    The Gaussian's standard deviation is set to fit the curve from
+    the 0.001-th to the 0.999-th percentile within `diameter`.
+    """
+    size = int(round(size))
+
+    # Make sure to cover 99.8% of the area under the curve.
+    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), size)
+
+    xx, yy = np.meshgrid(x, x)
+    normal = norm.pdf(xx, 0, 0.5) * norm.pdf(yy, 0, 0.5)
+
+    return normal
+
+
+def brush_blobs(diameter):
+    """
+    Sample a blob brush consisting of a combination of Gaussian
+    brushes.
+    """
+    diameter = int(round(diameter))
+    n = 20
+
+    # Select the positions for the subbrushes.
+    positions = np.random.randn(n, 2)
+    positions = np.clip(positions, norm.ppf(0.001), norm.ppf(0.999))
+    positions = positions / (2.5 * norm.ppf(0.999)) + 0.5
+    positions = (positions * diameter).astype(int)
+
+    sizes = np.random.randint(diameter // 3, 2 * diameter // 3, n)
+
+    canvas = np.zeros((diameter, diameter))
+
+    for position, size in zip(positions, sizes):
+        dot = brush_gaussian(size)
+        draw_alpha(canvas, dot, position)
+
+    return canvas
+
+
+def brush_calligraphy(angle=0.25):
+    """
+    Sample from a calligraphy brush.
+    """
+    def inner(diameter):
+        diameter = int(round(diameter))
+
+        image = np.zeros((STENCIL_SIZE, STENCIL_SIZE))
+        image[24:40, 4:60] = 1
+
+        theta = (0.05 * np.random.randn(1)[0] + angle) * np.pi
+        A = np.array([[np.cos(theta), -np.sin(theta)],
+                      [np.sin(theta), np.cos(theta)]])
+
+        # Apply the transformation multiple times to get a smoothing effect.
+        image = transform(image, A, resolution=diameter)
+        image = transform(image, np.linalg.inv(A), resolution=diameter)
+        image = transform(image, A, resolution=diameter)
+
+        return image
+
+    return inner
 
 
 def transform(image, A, resolution):
@@ -143,69 +217,6 @@ def transform(image, A, resolution):
     return sample
 
 
-def brush_gaussian(diameter):
-    """
-    Create a Gaussian alphamap of a given diameter.
-    The Gaussian's standard deviation is set to fit the curve from the 0.001-th
-    to the 0.999-th percentile within `diameter`.
-    """
-    diameter = int(round(diameter))
-    x = np.linspace(norm.ppf(0.001), norm.ppf(0.999), 2 * diameter)
-
-    xx, yy = np.meshgrid(x, x)
-    normal = norm.pdf(xx, 0, 0.5) * norm.pdf(yy, 0, 0.5)
-
-    return normal
-
-
-def brush_paint(diameter):
-    """
-    Sample from a paint brush.
-
-    The paint brush consists of a number of gaussian brushes normally
-    distributed over the canvas.
-    """
-    diameter = int(round(diameter))
-    n = 20
-
-    # Select the positions for the subbrushes.
-    positions = np.random.randn(n, 2)
-    positions = np.clip(positions, norm.ppf(0.001), norm.ppf(0.999))
-    positions = positions / (2.5 * norm.ppf(0.999)) + 0.5
-    positions = (positions * diameter).astype(int)
-
-    sizes = np.random.randint(diameter // 3, 2 * diameter // 3, n)
-
-    canvas = np.zeros((diameter, diameter))
-
-    for position, size in zip(positions, sizes):
-        dot = brush_gaussian(size)
-        draw_alpha(canvas, dot, position)
-
-    return canvas
-
-
-def brush_calligraphy(diameter, angle=0.25):
-    """
-    Sample from a calligraphy brush.
-    """
-    diameter = int(round(diameter))
-
-    image = np.zeros((STENCIL_SIZE, STENCIL_SIZE))
-    image[24:40, 4:60] = 1
-
-    theta = (0.05 * np.random.randn(1)[0] + angle) * np.pi
-    A = np.array([[np.cos(theta), -np.sin(theta)],
-                  [np.sin(theta), np.cos(theta)]])
-
-    # Apply the transformation multiple times to get a smoothing effect.
-    image = transform(image, A, resolution=diameter)
-    image = transform(image, np.linalg.inv(A), resolution=diameter)
-    image = transform(image, A, resolution=diameter)
-
-    return image
-
-
 def draw_alpha(dst, src, position):
     """
     Draw a small alphamap onto a larger one.
@@ -240,7 +251,7 @@ def draw_alpha(dst, src, position):
     dst[y:y+h, x:x+w] = patch
 
 
-def generate_dataset(csv_file, directory, brush, n):
+def generate_dataset(csv_file, directory, brush, n, args):
     label = "{};{};{};{};{};{};{};{};{};{};{};{}\n"
     header = label.format(
         'image',
@@ -251,16 +262,16 @@ def generate_dataset(csv_file, directory, brush, n):
 
     csv_file.write(header)
 
-    for idx in tqdm(range(n)):
+    for idx in tqdm(range(args.number)):
         image_name = f'{idx:07d}.png'
         image_path = os.path.join(directory, 'images', image_name)
 
-        canvas = np.zeros((STENCIL_SIZE, STENCIL_SIZE, 3))
+        canvas = np.zeros((args.size, args.size, 3))
         action = np.random.rand(8)
         color = np.random.rand(3)
         brush.draw_stroke(canvas, action, np.ones(3))
         alpha = canvas.mean(-1)[..., None]
-        canvas = np.ones((STENCIL_SIZE, STENCIL_SIZE, 3)) \
+        canvas = np.ones((args.size, args.size, 3)) \
             * color[None, None, :]
         canvas = np.concatenate((canvas, alpha), axis=-1)
 
@@ -275,25 +286,27 @@ def generate_dataset(csv_file, directory, brush, n):
     csv_file.close()
 
 
-def test_strokes():
+def test_strokes(args):
     print("Create brush")
-    brush = Brush(brush_calligraphy)
+    brush_prototype = brush_calligraphy(angle=0.25)
+    brush = Brush(brush_prototype, args.size)
 
     plt.figure()
+    plt.title("Brush dictionary")
     brush.show_brush_dict()
     plt.close()
 
-    canvas = np.zeros((4 * STENCIL_SIZE, 4 * STENCIL_SIZE, 3))
+    canvas = np.zeros((4 * args.size, 4 * args.size, 3))
 
     # Draw a simple grid.
-    canvas[:, ::STENCIL_SIZE // 2, :] = 0.5
-    canvas[::STENCIL_SIZE // 2, :, :] = 0.5
-    canvas[:, ::STENCIL_SIZE, :] = 1
-    canvas[::STENCIL_SIZE, :, :] = 1
+    canvas[:, ::args.size // 2, :] = 0.5
+    canvas[::args.size // 2, :, :] = 0.5
+    canvas[:, ::args.size, :] = 1
+    canvas[::args.size, :, :] = 1
 
     print("Draw strokes")
-    for x in range(0, 4 * STENCIL_SIZE, STENCIL_SIZE):
-        for y in range(0, 4 * STENCIL_SIZE, STENCIL_SIZE):
+    for x in range(0, 4 * args.size, args.size):
+        for y in range(0, 4 * args.size, args.size):
             print(x, y)
             action = np.random.rand(8)
             color = np.random.rand(3)
@@ -310,26 +323,34 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-n', dest='number', type=int, default=1000,
-        help="The number of stroke images to create.")
+        help="The number of stroke images to create."
+    )
     parser.add_argument(
         '-d', dest='directory', type=str, default='strokes',
-        help="")
+        help="Root directory to store the generated images and labels."
+    )
+    parser.add_argument(
+        '-s', dest='size', type=int, default=32,
+        help="Image size in pixels."
+    )
     parser.add_argument(
         '-t', dest='test', action='store_true',
-        help="Display a number of strokes on a test image without saving.")
+        help="Display a number of strokes on a test image without saving."
+    )
     args = parser.parse_args()
 
     if args.test:
-        test_strokes()
+        test_strokes(args)
     else:
-        brush = Brush(brush_calligraphy)
+        prototype = brush_calligraphy(angle=0.25)
+        brush = Brush(prototype, args.size)
 
         os.makedirs(os.path.join(args.directory, 'images'), exist_ok=True)
         csv_path = os.path.join(args.directory, 'labels.csv')
         csv_file = open(csv_path, 'w')
 
         try:
-            generate_dataset(csv_file, args.directory, brush, args.number)
+            generate_dataset(csv_file, args.directory, brush, args)
         except Exception as e:
             csv_file.close()
             raise e
