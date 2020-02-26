@@ -2,9 +2,9 @@ import os
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
+import imageio
 
 from collections import defaultdict
-from scipy import misc
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
@@ -28,8 +28,8 @@ class BrushStrokeDataset(Dataset):
     def __getitem__(self, idx):
         # Load image.
         image_path = os.path.join(
-            self.root_dir, 'images', self.stroke_params['image'][idx])
-        image = misc.imread(image_path)
+            self.root_dir, self.stroke_params['image'][idx])
+        image = imageio.imread(image_path)
 
         # Load stroke parameters.
         param_keys = [key for key in list(self.stroke_params.keys())[1:]]

@@ -10,7 +10,7 @@ GAUSSIAN_NORMALIZER = torch.Tensor([math.log(2 * math.pi)])
 
 
 class ConditionalPrior(nn.Module):
-    def __init__(self, dim_x, dim_z, dim_hidden=64):
+    def __init__(self, dim_z, dim_x, dim_hidden=64):
         """
         A Gaussian conditional prior whose parameters are modelled by
         a neural network.
@@ -203,6 +203,7 @@ class GenerativeLatentFlow(nn.Module):
         self.encoder = Encoder(dim_latent)
         self.decoder = Decoder(dim_latent)
 
+        self.prior = ConditionalPrior(dim_latent, dim_condition)
         self.flow = ConditionalFlow(dim_latent, dim_condition, 6)
 
     def encode(self, x, condition):
