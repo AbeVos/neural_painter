@@ -16,7 +16,7 @@ except ModuleNotFoundError:
 
 class BrushStrokeDataset(Dataset):
     def __init__(self, csv_file, root_dir, transform=None):
-        self.stroke_params = read_csv(os.path.join(root_dir, csv_file))
+        self.stroke_params = read_csv(csv_file)
         self.root_dir = root_dir
         self.transform = transform
 
