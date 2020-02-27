@@ -5,12 +5,9 @@ import torch.nn as nn
 from .autoencoder import Encoder, Decoder
 from .util import split_mask
 
-# Constant value to compute Gaussian likelihood.
-GAUSSIAN_NORMALIZER = torch.Tensor([math.log(2 * math.pi)])
-
 
 class ConditionalPrior(nn.Module):
-    def __init__(self, dim_z, dim_x, dim_hidden=64):
+    def __init__(self, dim_z, dim_x, dim_hidden=128, device='cpu'):
         """
         A Gaussian conditional prior whose parameters are modelled by
         a neural network.
@@ -37,7 +34,13 @@ class ConditionalPrior(nn.Module):
             nn.Linear(dim_hidden, dim_hidden),
             nn.LeakyReLU(),
             nn.Linear(dim_hidden, 2 * dim_z),
-        )
+        ).to(device)
+
+        # Constant value to compute Gaussian likelihood.
+        self.gaussian_normalizer = torch.Tensor(
+            [math.log(2 * math.pi)]).to(device)
+
+        self.device = device
 
     def forward(self, x):
         mu, logvar = self.conditional_layers(x).split(self.dim_z, dim=-1)
@@ -47,7 +50,7 @@ class ConditionalPrior(nn.Module):
     def sample(self, x):
         mean, logvar = self(x)
 
-        z = torch.randn_like(mean)
+        z = torch.randn_like(mean).to(self.device)
 
         return mean + z * torch.exp(0.5 * logvar)
 
@@ -60,7 +63,7 @@ class ConditionalPrior(nn.Module):
         z = (z - mean) / logvar.exp().sqrt()
 
         log_prob = -0.5 * (
-            self.dim_z * GAUSSIAN_NORMALIZER
+            self.dim_z * self.gaussian_normalizer
             + (z.unsqueeze(1) @ z.unsqueeze(-1)).squeeze()
             + logvar.sum(-1)
         )
@@ -72,10 +75,10 @@ class Permutation(nn.Module):
     """
     A random permutation.
     """
-    def __init__(self, n_features):
+    def __init__(self, n_features, device='cpu'):
         super(Permutation, self).__init__()
 
-        indices = torch.randperm(n_features)
+        indices = torch.randperm(n_features).to(device)
         self.indices = nn.Parameter(indices, requires_grad=False)
         self.inverse_indices = nn.Parameter(n_features - 1 - indices,
                                             requires_grad=False)
@@ -135,28 +138,28 @@ class ConditionalCouplingBlock(nn.Module):
     Combine two conditional coupling layers and a random permutation layer
     to create a conditional coupling block.
     """
-    def __init__(self, dim_feature, dim_condition):
+    def __init__(self, dim_feature, dim_condition, device='cpu'):
         super(ConditionalCouplingBlock, self).__init__()
 
-        mask = split_mask(dim_feature)
+        mask = split_mask(dim_feature).to(device)
 
         self.affine_1 = ConditionalCouplingLayer(
             dim_feature, dim_condition, mask
-        )
+        ).to(device)
         self.affine_2 = ConditionalCouplingLayer(
             dim_feature, dim_condition, 1 - mask
-        )
-        self.permutation = Permutation(dim_feature)
+        ).to(device)
+        self.permutation = Permutation(dim_feature, device)
 
     def forward(self, x, condition):
         x, jacobian_1 = self.affine_1(x, condition)
         x, jacobian_2 = self.affine_2(x, condition)
-        # x = self.permutation(x)
+        x = self.permutation(x)
 
         return x, jacobian_1 + jacobian_2
 
     def inverse(self, x, condition):
-        # x = self.permutation.inverse(x)
+        x = self.permutation.inverse(x)
         x = self.affine_2.inverse(x, condition)
         x = self.affine_1.inverse(x, condition)
 
@@ -168,11 +171,11 @@ class ConditionalFlow(nn.Module):
     Combine a number of conditional coupling blocks into a conditional
     normalizing flow.
     """
-    def __init__(self, dim_feature, dim_condition, n_layers):
+    def __init__(self, dim_feature, dim_condition, n_layers, device='cpu'):
         super(ConditionalFlow, self).__init__()
 
         self.layers = nn.ModuleList([
-            ConditionalCouplingBlock(dim_feature, dim_condition)
+            ConditionalCouplingBlock(dim_feature, dim_condition, device)
             for _ in range(n_layers)
         ])
 
@@ -197,14 +200,14 @@ class GenerativeLatentFlow(nn.Module):
     """
     An autoencoder whose latent space is modelled using a Normalizing Flow.
     """
-    def __init__(self, dim_latent, dim_condition):
+    def __init__(self, dim_latent, dim_condition, device='cpu'):
         super(GenerativeLatentFlow, self).__init__()
 
-        self.encoder = Encoder(dim_latent)
-        self.decoder = Decoder(dim_latent)
+        self.encoder = Encoder(dim_latent).to(device)
+        self.decoder = Decoder(dim_latent).to(device)
 
-        self.prior = ConditionalPrior(dim_latent, dim_condition)
-        self.flow = ConditionalFlow(dim_latent, dim_condition, 6)
+        self.prior = ConditionalPrior(dim_latent, dim_condition, device=device)
+        self.flow = ConditionalFlow(dim_latent, dim_condition, 10, device)
 
     def encode(self, x, condition):
         latent = self.encoder(x)
@@ -223,5 +226,11 @@ class GenerativeLatentFlow(nn.Module):
         z, log_det_J = self.flow(latent.data, condition)
         latent_recon = self.flow.inverse(z, condition)
         x_recon = self.decoder(latent_recon.data)
+        # x_recon = self.decoder(latent)
 
         return x_recon, z, log_det_J
+    
+    def sample(self, condition):
+        z = self.prior.sample(condition)
+
+        return self.decode(z, condition)

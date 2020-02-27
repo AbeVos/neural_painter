@@ -188,7 +188,7 @@ def brush_calligraphy(angle=0.25):
         image = transform(image, np.linalg.inv(A), resolution=diameter)
         image = transform(image, A, resolution=diameter)
 
-        return image
+        return (image - image.min()) / (image.max() - image.min())
 
     return inner
 
